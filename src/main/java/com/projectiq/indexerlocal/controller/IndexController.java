@@ -314,4 +314,14 @@ public class IndexController {
     public List<SpringComponent> lookupSpringComponentsByName(@RequestParam(required = true, defaultValue = "") String name) {
         return indexerService.searchSpringComponentsByName(name);
     }
+
+    // ==================== Repository Summary Operations ====================
+
+    /**
+     * Get repository summary statistics from indexed metadata.
+     */
+    @GetMapping("/repository-summary")
+    public RepositorySummary getRepositorySummary() {
+        return indexerService.getRepositorySummary();
+    }
 }

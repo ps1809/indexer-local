@@ -8,6 +8,7 @@ import com.projectiq.indexerlocal.extractor.ImportExtractor;
 import com.projectiq.indexerlocal.extractor.MethodInfoExtractor;
 import com.projectiq.indexerlocal.model.AnnotationInfo;
 import com.projectiq.indexerlocal.model.ClassInfo;
+import com.projectiq.indexerlocal.model.RepositorySummary;
 import com.projectiq.indexerlocal.model.FieldInfo;
 import com.projectiq.indexerlocal.model.FileIndex;
 import com.projectiq.indexerlocal.model.IndexResult;
@@ -342,5 +343,14 @@ public class IndexerService {
      */
     public List<SpringComponent> searchSpringComponentsByName(String namePattern) {
         return indexRepository.searchSpringComponentsByName(namePattern);
+    }
+
+    // ==================== Repository Summary Operations ====================
+
+    /**
+     * Get repository summary statistics from indexed metadata.
+     */
+    public RepositorySummary getRepositorySummary() {
+        return indexRepository.getRepositorySummary();
     }
 }

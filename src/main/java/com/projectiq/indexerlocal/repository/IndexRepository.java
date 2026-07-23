@@ -617,4 +617,60 @@ public class IndexRepository {
         // Re-extract from in-memory would be expensive, so we provide class count summary
         return file;
     }
+
+    // ==================== Repository Summary Methods ====================
+
+    /**
+     * Get repository summary statistics from indexed metadata.
+     */
+    public RepositorySummary getRepositorySummary() {
+        // Total Java files
+        Long totalJavaFiles = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM file_index", Long.class);
+
+        // Total packages (distinct parent directories)
+        Long totalPackages = jdbcTemplate.queryForObject(
+            "SELECT COUNT(DISTINCT substr(file_path, 1, length(file_path) - length(replace(file_path, '/', '')))) FROM file_index", 
+            Long.class);
+
+        // Total classes
+        Long totalClasses = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM class_info WHERE class_type = 'CLASS'", Long.class);
+
+        // Total interfaces
+        Long totalInterfaces = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM class_info WHERE class_type = 'INTERFACE'", Long.class);
+
+        // Total enums
+        Long totalEnums = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM class_info WHERE class_type = 'ENUM'", Long.class);
+
+        // Total records
+        Long totalRecords = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM class_info WHERE class_type = 'RECORD'", Long.class);
+
+        // Total methods
+        Long totalMethods = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM method_info", Long.class);
+
+        // Total fields
+        Long totalFields = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM field_info", Long.class);
+
+        // Total Spring components
+        Long totalSpringComponents = jdbcTemplate.queryForObject(
+            "SELECT COUNT(*) FROM spring_component", Long.class);
+
+        return new RepositorySummary(
+            totalJavaFiles != null ? totalJavaFiles : 0,
+            totalPackages != null ? totalPackages : 0,
+            totalClasses != null ? totalClasses : 0,
+            totalInterfaces != null ? totalInterfaces : 0,
+            totalEnums != null ? totalEnums : 0,
+            totalRecords != null ? totalRecords : 0,
+            totalMethods != null ? totalMethods : 0,
+            totalFields != null ? totalFields : 0,
+            totalSpringComponents != null ? totalSpringComponents : 0
+        );
+    }
 }
