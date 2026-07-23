@@ -273,6 +273,36 @@ public class IndexRepository {
             "FOREIGN KEY (class_id) REFERENCES class_info(id), " +
             "FOREIGN KEY (file_index_id) REFERENCES file_index(id))";
 
+        // File tracking table for incremental indexing
+        String sqlCreateFileTracking = 
+            "CREATE TABLE IF NOT EXISTS file_tracking (" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            "repository_id TEXT NOT NULL, " +
+            "file_path TEXT NOT NULL, " +
+            "relative_path TEXT NOT NULL, " +
+            "last_modified TIMESTAMP, " +
+            "file_size INTEGER, " +
+            "checksum TEXT, " +
+            "index_status TEXT DEFAULT 'INDEXED', " +
+            "tracked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+            "UNIQUE(repository_id, file_path))";
+
+        // Indexing stats table for incremental indexing statistics
+        String sqlCreateIndexingStats = 
+            "CREATE TABLE IF NOT EXISTS indexing_stats (" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            "repository_id TEXT NOT NULL, " +
+            "index_type TEXT NOT NULL, " +
+            "status TEXT NOT NULL, " +
+            "files_added INTEGER DEFAULT 0, " +
+            "files_modified INTEGER DEFAULT 0, " +
+            "files_deleted INTEGER DEFAULT 0, " +
+            "files_unchanged INTEGER DEFAULT 0, " +
+            "processing_time_ms INTEGER, " +
+            "last_indexing_timestamp TIMESTAMP, " +
+            "started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
+            "completed_at TIMESTAMP)";
+
         jdbcTemplate.execute(sqlCreateFileIndex);
         jdbcTemplate.execute(sqlCreateClassInfo);
         jdbcTemplate.execute(sqlCreateFieldInfo);
@@ -280,6 +310,8 @@ public class IndexRepository {
         jdbcTemplate.execute(sqlCreateAnnotationInfo);
         jdbcTemplate.execute(sqlCreateImportInfo);
         jdbcTemplate.execute(sqlCreateSpringComponent);
+        jdbcTemplate.execute(sqlCreateFileTracking);
+        jdbcTemplate.execute(sqlCreateIndexingStats);
     }
 
     // ==================== Save Methods ====================

@@ -4,6 +4,7 @@ import com.projectiq.indexerlocal.model.*;
 import com.projectiq.indexerlocal.model.api.ApiResponse;
 import com.projectiq.indexerlocal.model.api.PaginatedResponse;
 import com.projectiq.indexerlocal.service.IndexerService;
+import com.projectiq.indexerlocal.service.IncrementalIndexingService;
 import com.projectiq.indexerlocal.service.JavaCodeIndexer;
 import com.projectiq.indexerlocal.service.JavaCodeIndexer.JavaIndexResult;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,6 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -38,10 +40,14 @@ public class IndexControllerV1 {
 
     private final IndexerService indexerService;
     private final JavaCodeIndexer javaCodeIndexer;
+    private final IncrementalIndexingService incrementalIndexingService;
 
-    public IndexControllerV1(IndexerService indexerService, JavaCodeIndexer javaCodeIndexer) {
+    public IndexControllerV1(IndexerService indexerService, 
+                             JavaCodeIndexer javaCodeIndexer,
+                             IncrementalIndexingService incrementalIndexingService) {
         this.indexerService = indexerService;
         this.javaCodeIndexer = javaCodeIndexer;
+        this.incrementalIndexingService = incrementalIndexingService;
     }
 
     // ==================== File Indexing Operations ====================
@@ -695,5 +701,59 @@ public class IndexControllerV1 {
         stats.setTotalAnnotations(annotations);
         
         return ResponseEntity.ok(ApiResponse.success("Java index statistics retrieved successfully", stats));
+    }
+
+    // ==================== Incremental Indexing Operations ====================
+
+    /**
+     * Perform incremental indexing for a repository.
+     * POST /api/v1/repositories/{repositoryId}/incremental-index
+     */
+    @PostMapping("/repositories/{repositoryId}/incremental-index")
+    @Operation(summary = "Perform incremental indexing", description = "Performs incremental indexing by detecting file additions, modifications, deletions, and renames, then updates only the affected metadata. Significantly improves indexing performance compared to full re-indexing.")
+    public ResponseEntity<?> performIncrementalIndex(
+            @Parameter(description = "Repository ID") @PathVariable @NotBlank String repositoryId) {
+        log.info("Starting incremental indexing for repository: {}", repositoryId);
+        
+        try {
+            IncrementalIndexingStatistics stats = incrementalIndexingService.performIncrementalIndexing(repositoryId);
+            
+            if ("FAILED".equals(stats.getStatus())) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(ApiResponse.<IncrementalIndexingStatistics>internalError(
+                                "Incremental indexing failed: " + stats.getErrorMessage()));
+            }
+            
+            return ResponseEntity.ok(ApiResponse.success("Incremental indexing completed successfully", stats));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.badRequest("repository", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.internalError("Incremental indexing failed: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Get the last incremental indexing status for a repository.
+     * GET /api/v1/repositories/{repositoryId}/incremental-index/status
+     */
+    @GetMapping("/repositories/{repositoryId}/incremental-index/status")
+    @Operation(summary = "Get incremental indexing status", description = "Retrieves the last incremental indexing status and statistics for a repository")
+    public ResponseEntity<?> getLastIncrementalIndexingStatus(
+            @Parameter(description = "Repository ID") @PathVariable @NotBlank String repositoryId) {
+        try {
+            Map<String, Object> status = incrementalIndexingService.getLastIncrementalIndexingStatus(repositoryId);
+            
+            if (status.containsKey("error")) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(ApiResponse.<Map<String, Object>>notFound((String) status.get("error")));
+            }
+            
+            return ResponseEntity.ok(ApiResponse.success("Incremental indexing status retrieved successfully", status));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.internalError("Failed to retrieve incremental indexing status: " + e.getMessage()));
+        }
     }
 }
