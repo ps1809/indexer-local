@@ -9,6 +9,8 @@ public class ClassInfo {
     
     private Long id;
     private Long fileIndexId;
+    private String fileName;
+    private String filePath;
     private String className;
     private String classType; // CLASS, INTERFACE, ENUM, RECORD
     private String visibility; // PUBLIC, PROTECTED, PRIVATE
@@ -16,7 +18,12 @@ public class ClassInfo {
     private List<String> interfaces;
     private List<FieldInfo> fields;
     private List<MethodInfo> methods;
+    private List<MethodInfo> constructors;
     private List<AnnotationInfo> annotations;
+    private String package_;
+    private String genericTypeParameters;
+    private boolean abstract_;
+    private boolean final_;
     
     public ClassInfo() {
     }
@@ -35,6 +42,22 @@ public class ClassInfo {
 
     public void setFileIndexId(Long fileIndexId) {
         this.fileIndexId = fileIndexId;
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+
+    public String getFilePath() {
+        return filePath;
+    }
+
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
     }
 
     public String getClassName() {
@@ -93,11 +116,51 @@ public class ClassInfo {
         this.methods = methods;
     }
 
+    public List<MethodInfo> getConstructors() {
+        return constructors;
+    }
+
+    public void setConstructors(List<MethodInfo> constructors) {
+        this.constructors = constructors;
+    }
+
     public List<AnnotationInfo> getAnnotations() {
         return annotations;
     }
 
     public void setAnnotations(List<AnnotationInfo> annotations) {
         this.annotations = annotations;
+    }
+
+    public String getPackage_() {
+        return package_;
+    }
+
+    public void setPackage_(String package_) {
+        this.package_ = package_;
+    }
+
+    public String getGenericTypeParameters() {
+        return genericTypeParameters;
+    }
+
+    public void setGenericTypeParameters(String genericTypeParameters) {
+        this.genericTypeParameters = genericTypeParameters;
+    }
+
+    public boolean isAbstract() {
+        return abstract_;
+    }
+
+    public void setAbstract(boolean abstract_) {
+        this.abstract_ = abstract_;
+    }
+
+    public boolean isFinal() {
+        return final_;
+    }
+
+    public void setFinal(boolean final_) {
+        this.final_ = final_;
     }
 }

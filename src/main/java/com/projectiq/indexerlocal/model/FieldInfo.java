@@ -15,6 +15,7 @@ public class FieldInfo {
     private String visibility;
     private boolean isStatic;
     private boolean isFinal;
+    private String defaultValue;
     private List<AnnotationInfo> annotations;
     
     public FieldInfo() {
@@ -85,5 +86,22 @@ public class FieldInfo {
 
     public void setAnnotations(List<AnnotationInfo> annotations) {
         this.annotations = annotations;
+    }
+
+    // Convenience methods for JavaCodeIndexer
+    public void setName(String name) {
+        this.fieldName = name;
+    }
+
+    public void setType(String type) {
+        this.fieldType = type;
+    }
+
+    public String getDefaultValue() {
+        return defaultValue;
+    }
+
+    public void setDefaultValue(String defaultValue) {
+        this.defaultValue = defaultValue;
     }
 }

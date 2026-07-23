@@ -18,6 +18,9 @@ public class AnnotationInfo {
     private Map<String, Object> values;
     private String targetType; // CLASS, INTERFACE, ENUM, RECORD, METHOD, FIELD, PARAMETER, CONSTRUCTOR
     private Long targetId;
+    private String typeParameters;
+    private String arguments;
+    private Integer argumentCount;
 
     public static AnnotationInfo from(AnnotationExpr annotation) {
         if (annotation == null) {
@@ -120,5 +123,29 @@ public class AnnotationInfo {
 
     public void setTargetId(Long targetId) {
         this.targetId = targetId;
+    }
+
+    public String getTypeParameters() {
+        return typeParameters;
+    }
+
+    public void setTypeParameters(String typeParameters) {
+        this.typeParameters = typeParameters;
+    }
+
+    public String getArguments() {
+        return arguments;
+    }
+
+    public void setArguments(String arguments) {
+        this.arguments = arguments;
+    }
+
+    public Integer getArgumentCount() {
+        return argumentCount;
+    }
+
+    public void setArgumentCount(Integer argumentCount) {
+        this.argumentCount = argumentCount;
     }
 }

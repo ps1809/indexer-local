@@ -4,6 +4,8 @@ import com.projectiq.indexerlocal.model.*;
 import com.projectiq.indexerlocal.model.api.ApiResponse;
 import com.projectiq.indexerlocal.model.api.PaginatedResponse;
 import com.projectiq.indexerlocal.service.IndexerService;
+import com.projectiq.indexerlocal.service.JavaCodeIndexer;
+import com.projectiq.indexerlocal.service.JavaCodeIndexer.JavaIndexResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -11,13 +13,17 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * v1 REST controller for code indexing and metadata retrieval operations.
@@ -28,10 +34,14 @@ import java.util.List;
 @Tag(name = "Index API (v1)", description = "Versioned API for code indexing and metadata retrieval")
 public class IndexControllerV1 {
 
-    private final IndexerService indexerService;
+    private static final Logger log = LoggerFactory.getLogger(IndexControllerV1.class);
 
-    public IndexControllerV1(IndexerService indexerService) {
+    private final IndexerService indexerService;
+    private final JavaCodeIndexer javaCodeIndexer;
+
+    public IndexControllerV1(IndexerService indexerService, JavaCodeIndexer javaCodeIndexer) {
         this.indexerService = indexerService;
+        this.javaCodeIndexer = javaCodeIndexer;
     }
 
     // ==================== File Indexing Operations ====================
@@ -519,5 +529,171 @@ public class IndexControllerV1 {
     public ResponseEntity<ApiResponse<RepositorySummary>> getRepositorySummary() {
         RepositorySummary summary = indexerService.getRepositorySummary();
         return ResponseEntity.ok(ApiResponse.success("Repository summary retrieved successfully", summary));
+    }
+
+    // ==================== Java Code Indexing Engine Operations ====================
+
+    /**
+     * Build Java source index for a repository.
+     * POST /api/v1/repositories/{repositoryId}/index
+     */
+    @PostMapping("/repositories/{repositoryId}/index")
+    @Operation(summary = "Build Java source index", description = "Indexes all Java source files in the repository and persists structural metadata including packages, imports, classes, interfaces, enums, records, methods, constructors, fields, and annotations")
+    public ResponseEntity<?> buildJavaSourceIndex(
+            @Parameter(description = "Repository ID to index") @PathVariable @NotBlank String repositoryId) {
+        log.info("Starting Java code indexing for repository: {}", repositoryId);
+        
+        // Get workspace path from repository
+        com.projectiq.indexerlocal.model.Repository repository = indexerService.getRepositoryById(repositoryId);
+        if (repository == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.notFound("Repository with id: " + repositoryId));
+        }
+        
+        String workspacePath = repository.getWorkspacePath();
+        if (workspacePath == null || workspacePath.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(ApiResponse.badRequest("workspace", "Repository has no workspace path configured"));
+        }
+        
+        JavaIndexResult result = javaCodeIndexer.indexRepository(repositoryId, workspacePath);
+        
+        if (result.getError() != null) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResponse.<JavaIndexResult>internalError("Indexing failed: " + result.getError()));
+        }
+        
+        return ResponseEntity.ok(ApiResponse.success("Java source index built successfully", result));
+    }
+
+    /**
+     * Get indexing summary for a repository.
+     * GET /api/v1/repositories/{repositoryId}/index
+     */
+    @GetMapping("/repositories/{repositoryId}/index")
+    @Operation(summary = "Get indexing summary", description = "Retrieves the indexing summary including indexed files count and basic statistics for a repository")
+    public ResponseEntity<?> getJavaIndexSummary(
+            @Parameter(description = "Repository ID") @PathVariable @NotBlank String repositoryId) {
+        // Retrieve summary from database
+        List<FileIndex> indexedFiles = indexerService.listFilesByRepositoryId(repositoryId);
+        
+        if (indexedFiles.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.notFound("Java index not found for repository: " + repositoryId));
+        }
+        
+        // Build summary response
+        JavaIndexResult result = new JavaIndexResult();
+        result.setRepositoryId(repositoryId);
+        result.setIndexedAt(indexedFiles.get(0).getIndexedAt());
+        result.setIndexedFiles(indexedFiles);
+        
+        // Calculate statistics
+        JavaIndexingStatistics stats = new JavaIndexingStatistics();
+        stats.setTotalJavaFiles((long) indexedFiles.size());
+        
+        Set<String> packages = new HashSet<>();
+        long totalClasses = 0;
+        long totalInterfaces = 0;
+        long totalEnums = 0;
+        long totalRecords = 0;
+        long totalMethods = 0;
+        long totalFields = 0;
+        long totalAnnotations = 0;
+        
+        for (FileIndex file : indexedFiles) {
+            if (file.getPackageName() != null && !file.getPackageName().isEmpty()) {
+                packages.add(file.getPackageName());
+            }
+            if (file.getClasses() != null) {
+                for (ClassInfo cls : file.getClasses()) {
+                    totalClasses++;
+                    String type = cls.getClassType();
+                    if ("INTERFACE".equals(type)) totalInterfaces++;
+                    else if ("ENUM".equals(type)) totalEnums++;
+                    else if ("RECORD".equals(type)) totalRecords++;
+                    
+                    if (cls.getMethods() != null) totalMethods += cls.getMethods().size();
+                    if (cls.getFields() != null) totalFields += cls.getFields().size();
+                    if (cls.getAnnotations() != null) totalAnnotations += cls.getAnnotations().size();
+                }
+            }
+        }
+        
+        stats.setTotalPackages((long) packages.size());
+        stats.setTotalClasses(totalClasses);
+        stats.setTotalInterfaces(totalInterfaces);
+        stats.setTotalEnums(totalEnums);
+        stats.setTotalRecords(totalRecords);
+        stats.setTotalMethods(totalMethods);
+        stats.setTotalFields(totalFields);
+        stats.setTotalAnnotations(totalAnnotations);
+        
+        result.setStatistics(stats);
+        
+        return ResponseEntity.ok(ApiResponse.success("Java index summary retrieved successfully", result));
+    }
+
+    /**
+     * Get indexing statistics for a repository.
+     * GET /api/v1/repositories/{repositoryId}/index/statistics
+     */
+    @GetMapping("/repositories/{repositoryId}/index/statistics")
+    @Operation(summary = "Get indexing statistics", description = "Retrieves detailed indexing statistics including total Java files, packages, classes, interfaces, enums, records, methods, constructors, fields, and annotations for a repository")
+    public ResponseEntity<?> getJavaIndexStatistics(
+            @Parameter(description = "Repository ID") @PathVariable @NotBlank String repositoryId) {
+        // Retrieve from database
+        List<FileIndex> indexedFiles = indexerService.listFilesByRepositoryId(repositoryId);
+        
+        if (indexedFiles.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(ApiResponse.notFound("Java index statistics not found for repository: " + repositoryId));
+        }
+        
+        // Calculate statistics
+        JavaIndexingStatistics stats = new JavaIndexingStatistics();
+        stats.setTotalJavaFiles((long) indexedFiles.size());
+        
+        Set<String> packages = new HashSet<>();
+        long classes = 0;
+        long interfaces = 0;
+        long enums = 0;
+        long records = 0;
+        long methods = 0;
+        long constructors = 0;
+        long fields = 0;
+        long annotations = 0;
+        
+        for (FileIndex file : indexedFiles) {
+            if (file.getPackageName() != null && !file.getPackageName().isEmpty()) {
+                packages.add(file.getPackageName());
+            }
+            if (file.getClasses() != null) {
+                for (ClassInfo cls : file.getClasses()) {
+                    classes++;
+                    String type = cls.getClassType();
+                    if ("INTERFACE".equals(type)) interfaces++;
+                    else if ("ENUM".equals(type)) enums++;
+                    else if ("RECORD".equals(type)) records++;
+                    
+                    if (cls.getMethods() != null) methods += cls.getMethods().size();
+                    if (cls.getConstructors() != null) constructors += cls.getConstructors().size();
+                    if (cls.getFields() != null) fields += cls.getFields().size();
+                    if (cls.getAnnotations() != null) annotations += cls.getAnnotations().size();
+                }
+            }
+        }
+        
+        stats.setTotalPackages((long) packages.size());
+        stats.setTotalClasses(classes);
+        stats.setTotalInterfaces(interfaces);
+        stats.setTotalEnums(enums);
+        stats.setTotalRecords(records);
+        stats.setTotalMethods(methods);
+        stats.setTotalConstructors((long) constructors);
+        stats.setTotalFields(fields);
+        stats.setTotalAnnotations(annotations);
+        
+        return ResponseEntity.ok(ApiResponse.success("Java index statistics retrieved successfully", stats));
     }
 }

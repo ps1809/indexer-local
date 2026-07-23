@@ -959,6 +959,16 @@ public class IndexRepository {
         return file;
     }
 
+    // ==================== Java Code Indexing Engine Methods ====================
+
+    /**
+     * Find all indexed files for a specific repository by repository_id column.
+     */
+    public List<FileIndex> findAllFilesByRepositoryId(String repositoryId) {
+        String sql = "SELECT id, file_path, file_name, class_count, method_count, field_count, annotation_count FROM file_index WHERE file_path LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, fileRowMapper, "%" + repositoryId + "%");
+    }
+
     // ==================== Repository Summary Methods ====================
 
     /**

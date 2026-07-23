@@ -16,7 +16,11 @@ public class MethodInfo {
     private String visibility;
     private boolean isStatic;
     private boolean isAbstract;
+    private boolean isFinal;
+    private String methodType; // STATIC, CONSTRUCTOR, INSTANCE
     private List<String> parameters;
+    private List<String> parameterNames;
+    private List<String> parameterTypes;
     private List<String> exceptions;
     private List<AnnotationInfo> annotations;
     
@@ -118,5 +122,37 @@ public class MethodInfo {
 
     public void setAnnotations(List<AnnotationInfo> annotations) {
         this.annotations = annotations;
+    }
+
+    public boolean isFinal() {
+        return isFinal;
+    }
+
+    public void setFinal(boolean aFinal) {
+        isFinal = aFinal;
+    }
+
+    public String getMethodType() {
+        return methodType;
+    }
+
+    public void setMethodType(String methodType) {
+        this.methodType = methodType;
+    }
+
+    public List<String> getParameterNames() {
+        return parameterNames;
+    }
+
+    public void setParameterNames(List<String> parameterNames) {
+        this.parameterNames = parameterNames;
+    }
+
+    public List<String> getParameterTypes() {
+        return parameterTypes;
+    }
+
+    public void setParameterTypes(List<String> parameterTypes) {
+        this.parameterTypes = parameterTypes;
     }
 }

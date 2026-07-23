@@ -5,6 +5,8 @@ import java.util.List;
 /**
  * Represents the index result for a single Java source file.
  */
+import java.time.LocalDateTime;
+
 public class FileIndex {
     
     private Long id;
@@ -16,6 +18,10 @@ public class FileIndex {
     private long annotationCount;
     private List<ClassInfo> classes;
     private List<ImportInfo> imports;
+    private String packageName;
+    private String repositoryId;
+    private LocalDateTime indexedAt;
+    private String status;
     
     public FileIndex() {
     }
@@ -97,5 +103,37 @@ public class FileIndex {
 
     public void setImports(List<ImportInfo> imports) {
         this.imports = imports;
+    }
+
+    public String getPackageName() {
+        return packageName;
+    }
+
+    public void setPackageName(String packageName) {
+        this.packageName = packageName;
+    }
+
+    public String getRepositoryId() {
+        return repositoryId;
+    }
+
+    public void setRepositoryId(String repositoryId) {
+        this.repositoryId = repositoryId;
+    }
+
+    public LocalDateTime getIndexedAt() {
+        return indexedAt;
+    }
+
+    public void setIndexedAt(LocalDateTime indexedAt) {
+        this.indexedAt = indexedAt;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
     }
 }

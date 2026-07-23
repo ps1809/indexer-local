@@ -16,7 +16,9 @@ import com.projectiq.indexerlocal.model.MethodInfo;
 import com.projectiq.indexerlocal.model.SpringComponent;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import com.projectiq.indexerlocal.model.Repository;
 import com.projectiq.indexerlocal.repository.IndexRepository;
+import com.projectiq.indexerlocal.repository.RepositoryRepository;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -37,9 +39,11 @@ public class IndexerService {
     private final MethodInfoExtractor methodInfoExtractor = new MethodInfoExtractor();
     private final ImportExtractor importExtractor = new ImportExtractor();
     private final IndexRepository indexRepository;
+    private final RepositoryRepository repositoryRepository;
 
-    public IndexerService(IndexRepository indexRepository) {
+    public IndexerService(IndexRepository indexRepository, RepositoryRepository repositoryRepository) {
         this.indexRepository = indexRepository;
+        this.repositoryRepository = repositoryRepository;
     }
 
     /**
@@ -352,5 +356,21 @@ public class IndexerService {
      */
     public RepositorySummary getRepositorySummary() {
         return indexRepository.getRepositorySummary();
+    }
+
+    // ==================== Java Code Indexing Engine Operations ====================
+
+    /**
+     * Get a repository by its ID.
+     */
+    public Repository getRepositoryById(String repositoryId) {
+        return repositoryRepository.findByRepositoryId(repositoryId);
+    }
+
+    /**
+     * List all indexed files for a specific repository.
+     */
+    public List<FileIndex> listFilesByRepositoryId(String repositoryId) {
+        return indexRepository.findAllFilesByRepositoryId(repositoryId);
     }
 }
