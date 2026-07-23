@@ -157,6 +157,28 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 
+    /**
+     * Handles illegal state exceptions (e.g., repository not indexed).
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiResponse<Object>> handleIllegalState(
+            IllegalStateException ex) {
+        
+        log.warn("Illegal state: {}", ex.getMessage());
+
+        ApiResponse<Object> response = new ApiResponse<>(
+            HttpStatus.CONFLICT.value(),
+            "Conflict",
+            new ApiResponse.ErrorDetail(
+                HttpStatus.CONFLICT.value(),
+                "InvalidState",
+                ex.getMessage() != null ? ex.getMessage() : "Invalid state"
+            )
+        );
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
+    }
+
     // ==================== Resource Not Found Errors ====================
 
     /**

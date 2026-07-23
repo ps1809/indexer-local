@@ -401,6 +401,15 @@ public class RepositoryRepository {
             logger.warn("Failed to delete repository refresh history for {}: {}", repositoryId, e.getMessage());
         }
 
+        // Delete chat history
+        try {
+            String deleteChatHistorySql = "DELETE FROM chat_history WHERE repository_id = ?";
+            jdbcTemplate.update(deleteChatHistorySql, repositoryId);
+            logger.info("Deleted chat history for: {}", repositoryId);
+        } catch (Exception e) {
+            logger.warn("Failed to delete chat history for {}: {}", repositoryId, e.getMessage());
+        }
+
         // Delete repository record last
         String sql = "DELETE FROM repository WHERE repository_id = ?";
         jdbcTemplate.update(sql, repositoryId);
