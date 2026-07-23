@@ -1,0 +1,16 @@
+com\projectiq\indexerlocal\extractor\ImportExtractor.class
+com\projectiq\indexerlocal\model\FieldInfo.class
+com\projectiq\indexerlocal\model\MethodInfo.class
+com\projectiq\indexerlocal\extractor\MethodInfoExtractor.class
+com\projectiq\indexerlocal\service\IndexerService.class
+com\projectiq\indexerlocal\controller\IndexController.class
+com\projectiq\indexerlocal\extractor\ClassExtractor.class
+com\projectiq\indexerlocal\model\FileIndex.class
+com\projectiq\indexerlocal\IndexerLocalApplication.class
+com\projectiq\indexerlocal\extractor\Extractor.class
+com\projectiq\indexerlocal\model\ClassInfo.class
+com\projectiq\indexerlocal\model\IndexResult.class
+com\projectiq\indexerlocal\model\AnnotationInfo.class
+com\projectiq\indexerlocal\extractor\FieldExtractor.class
+com\projectiq\indexerlocal\model\ImportInfo.class
+com\projectiq\indexerlocal\repository\IndexRepository.class
