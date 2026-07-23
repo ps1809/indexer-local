@@ -455,4 +455,166 @@ public class IndexRepository {
         String sql = "SELECT id, class_id, component_type, class_name, file_index_id FROM spring_component WHERE component_type = ? ORDER BY id";
         return jdbcTemplate.query(sql, springComponentRowMapper, componentType);
     }
+
+    // ==================== Lookup Methods ====================
+
+    /**
+     * Search classes by name (partial match, case-insensitive).
+     */
+    public List<ClassInfo> searchClassesByName(String namePattern) {
+        String sql = "SELECT id, file_index_id, class_name, class_type, visibility, super_class, interfaces FROM class_info WHERE class_name LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, classRowMapper, "%" + namePattern + "%");
+    }
+
+    /**
+     * Search methods by name (partial match, case-insensitive).
+     */
+    public List<MethodInfo> searchMethodsByName(String namePattern) {
+        String sql = "SELECT id, class_id, method_name, method_signature, return_type, visibility, is_static, is_abstract, parameters, exceptions FROM method_info WHERE method_name LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, methodRowMapper, "%" + namePattern + "%");
+    }
+
+    /**
+     * Search fields by name (partial match, case-insensitive).
+     */
+    public List<FieldInfo> searchFieldsByName(String namePattern) {
+        String sql = "SELECT id, class_id, field_name, field_type, visibility, is_static, is_final FROM field_info WHERE field_name LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, fieldRowMapper, "%" + namePattern + "%");
+    }
+
+    /**
+     * Find classes by package (partial match on file path).
+     */
+    public List<ClassInfo> searchClassesByPackage(String packagePattern) {
+        String sql = "SELECT ci.id, ci.file_index_id, ci.class_name, ci.class_type, ci.visibility, ci.super_class, ci.interfaces " +
+                "FROM class_info ci INNER JOIN file_index fi ON ci.file_index_id = fi.id " +
+                "WHERE fi.file_path LIKE ? ORDER BY ci.id";
+        return jdbcTemplate.query(sql, classRowMapper, "%" + packagePattern + "%");
+    }
+
+    /**
+     * Find classes by super class name.
+     */
+    public List<ClassInfo> searchClassesBySuperClass(String superClass) {
+        String sql = "SELECT id, file_index_id, class_name, class_type, visibility, super_class, interfaces FROM class_info WHERE super_class LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, classRowMapper, "%" + superClass + "%");
+    }
+
+    /**
+     * Search annotations by name (partial match, case-insensitive).
+     */
+    public List<AnnotationInfo> searchAnnotationsByName(String namePattern) {
+        String sql = "SELECT id, annotation_name, full_name, target_type, target_id FROM annotation_info WHERE annotation_name LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+            AnnotationInfo annotation = new AnnotationInfo();
+            annotation.setId(rs.getLong("id"));
+            annotation.setAnnotationName(rs.getString("annotation_name"));
+            annotation.setFullName(rs.getString("full_name"));
+            annotation.setTargetType(rs.getString("target_type"));
+            annotation.setTargetId(rs.getLong("target_id"));
+            return annotation;
+        }, "%" + namePattern + "%");
+    }
+
+    /**
+     * Find annotations by target type and target ID.
+     */
+    public List<AnnotationInfo> findAnnotationsByTarget(String targetType, Long targetId) {
+        String sql = "SELECT id, annotation_name, full_name, target_type, target_id FROM annotation_info WHERE target_type = ? AND target_id = ? ORDER BY id";
+        return jdbcTemplate.query(sql, (rs, rowNum) -> {
+            AnnotationInfo annotation = new AnnotationInfo();
+            annotation.setId(rs.getLong("id"));
+            annotation.setAnnotationName(rs.getString("annotation_name"));
+            annotation.setFullName(rs.getString("full_name"));
+            annotation.setTargetType(rs.getString("target_type"));
+            annotation.setTargetId(rs.getLong("target_id"));
+            return annotation;
+        }, targetType, targetId);
+    }
+
+    /**
+     * Find methods by class ID.
+     */
+    public List<MethodInfo> findMethodsByClassId(Long classId) {
+        String sql = "SELECT id, class_id, method_name, method_signature, return_type, visibility, is_static, is_abstract, parameters, exceptions FROM method_info WHERE class_id = ? ORDER BY method_name";
+        return jdbcTemplate.query(sql, methodRowMapper, classId);
+    }
+
+    /**
+     * Find fields by class ID.
+     */
+    public List<FieldInfo> findFieldsByClassId(Long classId) {
+        String sql = "SELECT id, class_id, field_name, field_type, visibility, is_static, is_final FROM field_info WHERE class_id = ? ORDER BY field_name";
+        return jdbcTemplate.query(sql, fieldRowMapper, classId);
+    }
+
+    /**
+     * Search files by path (partial match).
+     */
+    public List<FileIndex> searchFilesByPath(String pathPattern) {
+        String sql = "SELECT id, file_path, file_name, class_count, method_count, field_count, annotation_count FROM file_index WHERE file_path LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, fileRowMapper, "%" + pathPattern + "%");
+    }
+
+    /**
+     * Find all distinct component types.
+     */
+    public List<String> findAllComponentTypes() {
+        String sql = "SELECT DISTINCT component_type FROM spring_component ORDER BY component_type";
+        return jdbcTemplate.queryForObject(sql, (rs, rowNum) -> {
+            java.util.List<String> types = new ArrayList<>();
+            while (rs.next()) {
+                types.add(rs.getString(1));
+            }
+            return types;
+        });
+    }
+
+    /**
+     * Search Spring components by type (case-insensitive).
+     */
+    public List<SpringComponent> searchSpringComponentsByTypeIgnoreCase(String componentType) {
+        String sql = "SELECT id, class_id, component_type, class_name, file_index_id FROM spring_component WHERE UPPER(component_type) = UPPER(?) ORDER BY id";
+        return jdbcTemplate.query(sql, springComponentRowMapper, componentType);
+    }
+
+    /**
+     * Search Spring components by class name (partial match).
+     */
+    public List<SpringComponent> searchSpringComponentsByName(String namePattern) {
+        String sql = "SELECT id, class_id, component_type, class_name, file_index_id FROM spring_component WHERE class_name LIKE ? ORDER BY id";
+        return jdbcTemplate.query(sql, springComponentRowMapper, "%" + namePattern + "%");
+    }
+
+    /**
+     * Get full class detail with methods, fields, annotations.
+     */
+    public ClassInfo findClassDetailById(Long classId) {
+        ClassInfo cls = findClassById(classId);
+        if (cls == null) {
+            return null;
+        }
+        // Get methods
+        List<MethodInfo> methods = findMethodsByClassId(classId);
+        cls.setMethods(methods);
+        // Get fields
+        List<FieldInfo> fields = findFieldsByClassId(classId);
+        cls.setFields(fields);
+        // Get annotations
+        List<AnnotationInfo> annotations = findAnnotationsByTarget("CLASS", classId);
+        cls.setAnnotations(annotations);
+        return cls;
+    }
+
+    /**
+     * Get full file detail with all classes.
+     */
+    public FileIndex findFileDetailById(Long fileId) {
+        FileIndex file = findFileById(fileId);
+        if (file == null) {
+            return null;
+        }
+        // Re-extract from in-memory would be expensive, so we provide class count summary
+        return file;
+    }
 }

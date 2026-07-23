@@ -251,10 +251,96 @@ public class IndexerService {
         return indexRepository.findAllSpringComponents();
     }
 
+    // ==================== Lookup Operations ====================
+
     /**
-     * Filter Spring components by type.
+     * Search classes by name pattern (partial match).
      */
-    public List<SpringComponent> getSpringComponentsByType(String type) {
-        return indexRepository.findSpringComponentsByType(type);
+    public List<ClassInfo> searchClassesByName(String namePattern) {
+        return indexRepository.searchClassesByName(namePattern);
+    }
+
+    /**
+     * Search methods by name pattern (partial match).
+     */
+    public List<MethodInfo> searchMethodsByName(String namePattern) {
+        return indexRepository.searchMethodsByName(namePattern);
+    }
+
+    /**
+     * Search fields by name pattern (partial match).
+     */
+    public List<FieldInfo> searchFieldsByName(String namePattern) {
+        return indexRepository.searchFieldsByName(namePattern);
+    }
+
+    /**
+     * Search classes by package/path pattern.
+     */
+    public List<ClassInfo> searchClassesByPackage(String packagePattern) {
+        return indexRepository.searchClassesByPackage(packagePattern);
+    }
+
+    /**
+     * Search annotations by name pattern.
+     */
+    public List<AnnotationInfo> searchAnnotationsByName(String namePattern) {
+        return indexRepository.searchAnnotationsByName(namePattern);
+    }
+
+    /**
+     * Get annotations for a specific target (class, method, field).
+     */
+    public List<AnnotationInfo> getAnnotationsByTarget(String targetType, Long targetId) {
+        return indexRepository.findAnnotationsByTarget(targetType, targetId);
+    }
+
+    /**
+     * Get full class detail including methods, fields, and annotations.
+     */
+    public ClassInfo getClassDetailById(Long classId) {
+        return indexRepository.findClassDetailById(classId);
+    }
+
+    /**
+     * Get methods for a specific class.
+     */
+    public List<MethodInfo> getMethodsByClassId(Long classId) {
+        return indexRepository.findMethodsByClassId(classId);
+    }
+
+    /**
+     * Get fields for a specific class.
+     */
+    public List<FieldInfo> getFieldsByClassId(Long classId) {
+        return indexRepository.findFieldsByClassId(classId);
+    }
+
+    /**
+     * Search files by path pattern.
+     */
+    public List<FileIndex> searchFilesByPath(String pathPattern) {
+        return indexRepository.searchFilesByPath(pathPattern);
+    }
+
+    /**
+     * Get all distinct Spring component types.
+     */
+    public List<String> getAvailableComponentTypes() {
+        return indexRepository.findAllComponentTypes();
+    }
+
+    /**
+     * Search Spring components by type (case-insensitive).
+     */
+    public List<SpringComponent> searchSpringComponentsByType(String type) {
+        return indexRepository.searchSpringComponentsByTypeIgnoreCase(type);
+    }
+
+    /**
+     * Search Spring components by class name pattern.
+     */
+    public List<SpringComponent> searchSpringComponentsByName(String namePattern) {
+        return indexRepository.searchSpringComponentsByName(namePattern);
     }
 }

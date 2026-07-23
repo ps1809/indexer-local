@@ -16,6 +16,8 @@ public class AnnotationInfo {
     private String annotationName;
     private String fullName;
     private Map<String, Object> values;
+    private String targetType; // CLASS, INTERFACE, ENUM, RECORD, METHOD, FIELD, PARAMETER, CONSTRUCTOR
+    private Long targetId;
 
     public static AnnotationInfo from(AnnotationExpr annotation) {
         if (annotation == null) {
@@ -102,5 +104,21 @@ public class AnnotationInfo {
 
     public void setValues(Map<String, Object> values) {
         this.values = values;
+    }
+
+    public String getTargetType() {
+        return targetType;
+    }
+
+    public void setTargetType(String targetType) {
+        this.targetType = targetType;
+    }
+
+    public Long getTargetId() {
+        return targetId;
+    }
+
+    public void setTargetId(Long targetId) {
+        this.targetId = targetId;
     }
 }

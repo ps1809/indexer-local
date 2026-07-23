@@ -205,11 +205,113 @@ public class IndexController {
         return indexerService.listSpringComponents();
     }
 
+    // ==================== Lookup Operations ====================
+
     /**
-     * Filter Spring components by type (e.g., SERVICE, REPOSITORY, CONTROLLER).
+     * Search classes by name pattern (partial match).
      */
-    @GetMapping("/spring-components/type")
-    public List<SpringComponent> getSpringComponentsByType(@RequestParam String type) {
-        return indexerService.getSpringComponentsByType(type);
+    @GetMapping("/lookup/classes")
+    public List<ClassInfo> lookupClasses(@RequestParam(required = true, defaultValue = "") String name) {
+        return indexerService.searchClassesByName(name);
+    }
+
+    /**
+     * Search methods by name pattern (partial match).
+     */
+    @GetMapping("/lookup/methods")
+    public List<MethodInfo> lookupMethods(@RequestParam(required = true, defaultValue = "") String name) {
+        return indexerService.searchMethodsByName(name);
+    }
+
+    /**
+     * Search fields by name pattern (partial match).
+     */
+    @GetMapping("/lookup/fields")
+    public List<FieldInfo> lookupFields(@RequestParam(required = true, defaultValue = "") String name) {
+        return indexerService.searchFieldsByName(name);
+    }
+
+    /**
+     * Search classes by package/path pattern.
+     */
+    @GetMapping("/lookup/by-package")
+    public List<ClassInfo> lookupByPackage(@RequestParam(required = true, defaultValue = "") String pkg) {
+        return indexerService.searchClassesByPackage(pkg);
+    }
+
+    /**
+     * Search annotations by name pattern (partial match).
+     */
+    @GetMapping("/lookup/annotations")
+    public List<AnnotationInfo> lookupAnnotations(@RequestParam(required = true, defaultValue = "") String name) {
+        return indexerService.searchAnnotationsByName(name);
+    }
+
+    /**
+     * Get all annotations for a specific target (class/method/field).
+     */
+    @GetMapping("/lookup/target-annotations")
+    public List<AnnotationInfo> lookupTargetAnnotations(@RequestParam String type, @RequestParam Long id) {
+        return indexerService.getAnnotationsByTarget(type, id);
+    }
+
+    /**
+     * Get full class detail including methods, fields, and annotations by class ID.
+     */
+    @GetMapping("/lookup/class-detail")
+    public ClassInfo lookupClassDetail(@RequestParam Long id) {
+        ClassInfo detail = indexerService.getClassDetailById(id);
+        if (detail == null) {
+            throw new RuntimeException("Class not found with id: " + id);
+        }
+        return detail;
+    }
+
+    /**
+     * Get methods for a specific class by class ID.
+     */
+    @GetMapping("/lookup/class-methods")
+    public List<MethodInfo> lookupClassMethods(@RequestParam Long classId) {
+        return indexerService.getMethodsByClassId(classId);
+    }
+
+    /**
+     * Get fields for a specific class by class ID.
+     */
+    @GetMapping("/lookup/class-fields")
+    public List<FieldInfo> lookupClassFields(@RequestParam Long classId) {
+        return indexerService.getFieldsByClassId(classId);
+    }
+
+    /**
+     * Search files by path pattern.
+     */
+    @GetMapping("/lookup/files")
+    public List<FileIndex> lookupFiles(@RequestParam(required = true, defaultValue = "") String path) {
+        return indexerService.searchFilesByPath(path);
+    }
+
+    /**
+     * Get all available Spring component types.
+     */
+    @GetMapping("/lookup/component-types")
+    public List<String> lookupComponentTypes() {
+        return indexerService.getAvailableComponentTypes();
+    }
+
+    /**
+     * Search Spring components by type (case-insensitive, supports SERVICE, REPOSITORY, CONTROLLER, etc.).
+     */
+    @GetMapping("/lookup/spring-components")
+    public List<SpringComponent> lookupSpringComponents(@RequestParam(required = true, defaultValue = "") String type) {
+        return indexerService.searchSpringComponentsByType(type);
+    }
+
+    /**
+     * Search Spring components by class name pattern.
+     */
+    @GetMapping("/lookup/spring-components/name")
+    public List<SpringComponent> lookupSpringComponentsByName(@RequestParam(required = true, defaultValue = "") String name) {
+        return indexerService.searchSpringComponentsByName(name);
     }
 }
