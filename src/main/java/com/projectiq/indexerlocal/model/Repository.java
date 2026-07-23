@@ -18,6 +18,8 @@ public class Repository {
     private RepositoryStatus status;
     private String buildSystem;
     private String technologyStack;
+    private LocalDateTime lastRefreshTimestamp;
+    private LocalDateTime lastIndexingTimestamp;
 
     public Repository() {
         this.registrationTimestamp = LocalDateTime.now();
@@ -25,6 +27,8 @@ public class Repository {
         this.status = RepositoryStatus.REGISTERED;
         this.buildSystem = "Unknown";
         this.technologyStack = "Unknown";
+        this.lastRefreshTimestamp = null;
+        this.lastIndexingTimestamp = null;
     }
 
     public Long getId() {
@@ -105,5 +109,21 @@ public class Repository {
 
     public void setTechnologyStack(String technologyStack) {
         this.technologyStack = technologyStack;
+    }
+
+    public LocalDateTime getLastRefreshTimestamp() {
+        return lastRefreshTimestamp;
+    }
+
+    public void setLastRefreshTimestamp(LocalDateTime lastRefreshTimestamp) {
+        this.lastRefreshTimestamp = lastRefreshTimestamp;
+    }
+
+    public LocalDateTime getLastIndexingTimestamp() {
+        return lastIndexingTimestamp;
+    }
+
+    public void setLastIndexingTimestamp(LocalDateTime lastIndexingTimestamp) {
+        this.lastIndexingTimestamp = lastIndexingTimestamp;
     }
 }

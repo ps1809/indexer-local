@@ -1084,4 +1084,158 @@ public class IndexRepository {
             totalSpringComponents != null ? totalSpringComponents : 0
         );
     }
+
+    // ==================== Cleanup Methods for Repository Deletion ====================
+
+    /**
+     * Delete all indexed data for a specific repository from SQLite tables.
+     */
+    public void deleteAllIndexedDataByRepositoryId(String repositoryId) {
+        initSchema();
+
+        // Delete file tracking records first (foreign key dependency)
+        jdbcTemplate.update("DELETE FROM file_tracking WHERE repository_id = ?", repositoryId);
+
+        // Get file indices for this repository and delete associated data
+        List<FileIndex> files = findAllFilesByRepositoryId(repositoryId);
+        for (FileIndex file : files) {
+            jdbcTemplate.update("DELETE FROM import_info WHERE file_index_id = ?", file.getId());
+        }
+        jdbcTemplate.update("DELETE FROM file_index WHERE file_path LIKE ?", "%" + repositoryId + "%");
+
+        // Delete spring components for this repository
+        jdbcTemplate.update("DELETE FROM spring_component WHERE repository_id LIKE ?", "%" + repositoryId + "%");
+
+        // Delete indexing stats for this repository
+        jdbcTemplate.update("DELETE FROM indexing_stats WHERE repository_id = ?", repositoryId);
+    }
+
+    /**
+     * Get indexed statistics across all repositories.
+     */
+    public java.util.Map<String, Object> getIndexedStatistics() {
+        initSchema();
+
+        java.util.Map<String, Object> stats = new java.util.HashMap<>();
+
+        try {
+            Integer totalFiles = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM file_index", Integer.class);
+            stats.put("totalIndexedFiles", totalFiles != null ? totalFiles : 0);
+
+            Integer totalClasses = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM class_info", Integer.class);
+            stats.put("totalIndexedClasses", totalClasses != null ? totalClasses : 0);
+
+            Integer totalMethods = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM method_info", Integer.class);
+            stats.put("totalIndexedMethods", totalMethods != null ? totalMethods : 0);
+
+            Integer totalFields = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM field_info", Integer.class);
+            stats.put("totalIndexedFields", totalFields != null ? totalFields : 0);
+        } catch (Exception e) {
+            stats.put("totalIndexedFiles", 0);
+            stats.put("totalIndexedClasses", 0);
+            stats.put("totalIndexedMethods", 0);
+            stats.put("totalIndexedFields", 0);
+        }
+
+        return stats;
+    }
+
+    /**
+     * Get indexing history for a repository.
+     */
+    public List<java.util.Map<String, Object>> getIndexingHistory(String repositoryId) {
+        initSchema();
+
+        String sql = "SELECT * FROM indexing_stats WHERE repository_id = ? ORDER BY started_at DESC";
+        return jdbcTemplate.queryForList(sql, repositoryId);
+    }
+
+    // ==================== Individual Cleanup Methods for RepositoryRepository ====================
+
+    /**
+     * Delete all Java index data for a repository.
+     */
+    public void deleteAllJavaIndexData(String repositoryId) {
+        initSchema();
+        // File index includes classes, methods, fields via FK cascade
+        List<FileIndex> files = findAllFilesByRepositoryId(repositoryId);
+        for (FileIndex file : files) {
+            jdbcTemplate.update("DELETE FROM import_info WHERE file_index_id = ?", file.getId());
+        }
+        jdbcTemplate.update("DELETE FROM file_index WHERE file_path LIKE ?", "%" + repositoryId + "%");
+    }
+
+    /**
+     * Delete all REST API index data for a repository.
+     */
+    public void deleteAllRestApiIndexData(String repositoryId) {
+        initSchema();
+        jdbcTemplate.update("DELETE FROM spring_component WHERE repository_id LIKE ?", "%" + repositoryId + ":REST_API%");
+    }
+
+    /**
+     * Delete all Spring Component index data for a repository.
+     */
+    public void deleteAllSpringComponentData(String repositoryId) {
+        initSchema();
+        jdbcTemplate.update("DELETE FROM spring_component WHERE repository_id LIKE ?", "%" + repositoryId + "%");
+    }
+
+    /**
+     * Delete all Dependency metadata for a repository.
+     * (Dependencies stored in-memory via DependencyService, no SQLite table)
+     */
+    public void deleteAllDependencyData(String repositoryId) {
+        // Dependencies are managed by DependencyService in-memory; no SQLite cleanup needed here
+    }
+
+    /**
+     * Delete all Configuration metadata for a repository.
+     * (Configuration files stored in-memory via ConfigurationService, no SQLite table)
+     */
+    public void deleteAllConfigurationData(String repositoryId) {
+        // Configuration files are managed by ConfigurationService in-memory; no SQLite cleanup needed here
+    }
+
+    /**
+     * Delete all Database metadata for a repository.
+     * (Database artifacts stored in-memory via DatabaseService, no SQLite table)
+     */
+    public void deleteAllDatabaseData(String repositoryId) {
+        // Database artifacts are managed by DatabaseService in-memory; no SQLite cleanup needed here
+    }
+
+    /**
+     * Delete all Statistics for a repository.
+     */
+    public void deleteAllStatistics(String repositoryId) {
+        initSchema();
+        try {
+            jdbcTemplate.update("DELETE FROM java_indexing_statistics WHERE repository_id = ?", repositoryId);
+        } catch (Exception e) {
+            // Table may not exist yet
+        }
+        try {
+            jdbcTemplate.update("DELETE FROM rest_api_statistics WHERE repository_id = ?", repositoryId);
+        } catch (Exception e) {
+            // Table may not exist yet
+        }
+        try {
+            jdbcTemplate.update("DELETE FROM spring_component_statistics WHERE repository_id = ?", repositoryId);
+        } catch (Exception e) {
+            // Table may not exist yet
+        }
+    }
+
+    /**
+     * Delete all Indexing History for a repository.
+     */
+    public void deleteAllIndexingHistory(String repositoryId) {
+        initSchema();
+        jdbcTemplate.update("DELETE FROM indexing_stats WHERE repository_id = ?", repositoryId);
+    }
 }

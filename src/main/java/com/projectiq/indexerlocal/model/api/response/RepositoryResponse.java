@@ -41,6 +41,12 @@ public class RepositoryResponse {
     @Schema(description = "Technology stack", example = "Unknown")
     private String technologyStack;
 
+    @Schema(description = "Last refresh timestamp", example = "2024-01-15T10:30:00")
+    private LocalDateTime lastRefreshTimestamp;
+
+    @Schema(description = "Last indexing timestamp", example = "2024-01-15T10:30:00")
+    private LocalDateTime lastIndexingTimestamp;
+
     public RepositoryResponse() {
     }
 
@@ -122,5 +128,21 @@ public class RepositoryResponse {
 
     public void setTechnologyStack(String technologyStack) {
         this.technologyStack = technologyStack;
+    }
+
+    public LocalDateTime getLastRefreshTimestamp() {
+        return lastRefreshTimestamp;
+    }
+
+    public void setLastRefreshTimestamp(LocalDateTime lastRefreshTimestamp) {
+        this.lastRefreshTimestamp = lastRefreshTimestamp;
+    }
+
+    public LocalDateTime getLastIndexingTimestamp() {
+        return lastIndexingTimestamp;
+    }
+
+    public void setLastIndexingTimestamp(LocalDateTime lastIndexingTimestamp) {
+        this.lastIndexingTimestamp = lastIndexingTimestamp;
     }
 }

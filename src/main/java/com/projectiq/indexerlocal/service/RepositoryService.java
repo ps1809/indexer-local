@@ -12,7 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.Optional;
 
@@ -27,13 +30,16 @@ public class RepositoryService {
     private final RepositoryRepository repositoryRepository;
     private final WorkspaceService workspaceService;
     private final WorkspaceProperties workspaceProperties;
+    private final com.projectiq.indexerlocal.repository.IndexRepository indexRepository;
 
     public RepositoryService(RepositoryRepository repositoryRepository,
                             WorkspaceService workspaceService,
-                            WorkspaceProperties workspaceProperties) {
+                            WorkspaceProperties workspaceProperties,
+                            com.projectiq.indexerlocal.repository.IndexRepository indexRepository) {
         this.repositoryRepository = repositoryRepository;
         this.workspaceService = workspaceService;
         this.workspaceProperties = workspaceProperties;
+        this.indexRepository = indexRepository;
     }
 
     /**
@@ -83,6 +89,176 @@ public class RepositoryService {
      */
     public List<com.projectiq.indexerlocal.model.Repository> listRepositories() {
         return repositoryRepository.findAll();
+    }
+
+    /**
+     * List repositories with pagination, sorting, and filtering.
+     */
+    public Map<String, Object> listRepositoriesWithPagination(int page, int size, String sortBy, String sortOrder, RepositoryStatus status) {
+        // Validate and default parameters
+        if (page < 0) page = 0;
+        if (size <= 0 || size > 100) size = 20;
+        if (sortBy == null || sortBy.isEmpty()) sortBy = "id";
+        if (sortOrder == null || sortOrder.isEmpty()) sortOrder = "asc";
+
+        List<com.projectiq.indexerlocal.model.Repository> repositories = repositoryRepository.findAllWithPagination(page, size, sortBy, sortOrder, status);
+
+        // Get total count for pagination info
+        Long totalCount;
+        if (status != null) {
+            totalCount = repositoryRepository.countByStatus(status);
+        } else {
+            totalCount = repositoryRepository.countAll();
+        }
+
+        int totalPages = (int) Math.ceil((double) totalCount / size);
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("repositories", repositories);
+        result.put("page", page);
+        result.put("size", size);
+        result.put("totalPages", totalPages);
+        result.put("totalCount", totalCount);
+        result.put("hasNext", page < totalPages - 1);
+        result.put("hasPrevious", page > 0);
+
+        return result;
+    }
+
+    /**
+     * Update repository metadata.
+     */
+    public com.projectiq.indexerlocal.model.Repository updateRepository(Long id, String name, String description, String workspacePath) {
+        com.projectiq.indexerlocal.model.Repository repository = repositoryRepository.findById(id);
+        if (repository == null) {
+            throw new IllegalArgumentException("Repository with id '" + id + "' not found");
+        }
+
+        // Update fields if provided
+        if (name != null && !name.isEmpty()) {
+            repository.setRepositoryName(name);
+        }
+
+        if (workspacePath != null && !workspacePath.isEmpty()) {
+            // Validate workspace path if provided
+            Path pathObj = Paths.get(workspacePath).toAbsolutePath().normalize();
+            if (!Files.exists(pathObj)) {
+                throw new IllegalArgumentException("Workspace directory does not exist: " + workspacePath);
+            }
+            repository.setWorkspacePath(workspacePath);
+        }
+
+        // Update timestamp
+        repository.setLastUpdatedTimestamp(LocalDateTime.now());
+        repositoryRepository.update(repository);
+
+        logger.info("Repository updated: id={}, name={}", id, repository.getRepositoryName());
+        return repository;
+    }
+
+    /**
+     * Delete a repository and all its indexed data.
+     */
+    public void deleteRepositoryWithAllData(String repositoryId) {
+        long startTime = System.currentTimeMillis();
+        
+        com.projectiq.indexerlocal.model.Repository repository = repositoryRepository.findByRepositoryId(repositoryId);
+        if (repository == null) {
+            throw new IllegalArgumentException("Repository with repositoryId '" + repositoryId + "' not found");
+        }
+
+        // Check if indexing is in progress
+        if (repository.getStatus() == RepositoryStatus.INDEXING || repository.getStatus() == RepositoryStatus.REFRESHING) {
+            throw new IllegalStateException("Cannot delete repository while indexing is in progress: " + repositoryId);
+        }
+
+        logger.info("Starting deletion of repository: id={}, name={}", repositoryId, repository.getRepositoryName());
+
+        // Delete all indexed data from SQLite tables via IndexRepository
+        if (indexRepository != null) {
+            try {
+                indexRepository.deleteAllJavaIndexData(repositoryId);
+                logger.info("Deleted Java index data for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete Java index data for repository {}: {}", repositoryId, e.getMessage());
+            }
+            
+            try {
+                indexRepository.deleteAllRestApiIndexData(repositoryId);
+                logger.info("Deleted REST API index data for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete REST API index data for repository {}: {}", repositoryId, e.getMessage());
+            }
+            
+            try {
+                indexRepository.deleteAllSpringComponentData(repositoryId);
+                logger.info("Deleted Spring Component index data for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete Spring Component index data for repository {}: {}", repositoryId, e.getMessage());
+            }
+            
+            try {
+                indexRepository.deleteAllDependencyData(repositoryId);
+                logger.info("Deleted dependency metadata for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete dependency metadata for repository {}: {}", repositoryId, e.getMessage());
+            }
+            
+            try {
+                indexRepository.deleteAllConfigurationData(repositoryId);
+                logger.info("Deleted configuration metadata for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete configuration metadata for repository {}: {}", repositoryId, e.getMessage());
+            }
+            
+            try {
+                indexRepository.deleteAllDatabaseData(repositoryId);
+                logger.info("Deleted database metadata for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete database metadata for repository {}: {}", repositoryId, e.getMessage());
+            }
+            
+            try {
+                indexRepository.deleteAllStatistics(repositoryId);
+                logger.info("Deleted statistics for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete statistics for repository {}: {}", repositoryId, e.getMessage());
+            }
+            
+            try {
+                indexRepository.deleteAllIndexingHistory(repositoryId);
+                logger.info("Deleted indexing history for repository: {}", repositoryId);
+            } catch (Exception e) {
+                logger.warn("Failed to delete indexing history for repository {}: {}", repositoryId, e.getMessage());
+            }
+        }
+
+        // Delete workspace and repository record via RepositoryRepository
+        repositoryRepository.deleteAllDataByRepositoryId(repositoryId);
+
+        long duration = System.currentTimeMillis() - startTime;
+        logger.info("Repository and all indexed data fully deleted: id={}, name={}, duration={}ms", repositoryId, repository.getRepositoryName(), duration);
+    }
+
+    /**
+     * Get repository management statistics.
+     */
+    public Map<String, Object> getRepositoryStatistics() {
+        // Count repositories by status from RepositoryRepository
+        Long totalRepositories = repositoryRepository.countAll();
+        Long readyRepositories = repositoryRepository.countByStatus(RepositoryStatus.READY);
+        Long failedRepositories = repositoryRepository.countByStatus(RepositoryStatus.FAILED);
+        Long indexingRepositories = repositoryRepository.countByStatus(RepositoryStatus.INDEXING);
+        Long registeredRepositories = repositoryRepository.countByStatus(RepositoryStatus.REGISTERED);
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("totalRepositories", totalRepositories != null ? totalRepositories : 0);
+        stats.put("readyRepositories", readyRepositories != null ? readyRepositories : 0);
+        stats.put("failedRepositories", failedRepositories != null ? failedRepositories : 0);
+        stats.put("indexingRepositories", indexingRepositories != null ? indexingRepositories : 0);
+        stats.put("registeredRepositories", registeredRepositories != null ? registeredRepositories : 0);
+
+        return stats;
     }
 
     /**

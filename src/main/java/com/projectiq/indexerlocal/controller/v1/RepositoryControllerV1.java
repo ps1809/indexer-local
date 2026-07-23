@@ -13,6 +13,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.projectiq.indexerlocal.model.RepositoryStatus;
+
 import java.util.List;
 import java.util.Map;
 
@@ -42,57 +44,111 @@ public class RepositoryControllerV1 {
     public ResponseEntity<RepositoryResponse> registerRepository(@RequestBody com.projectiq.indexerlocal.model.api.request.RepositoryRegisterRequest request) {
         logger.info("Received repository registration request: path={}", request.getPath());
         
-        RepositoryResponse response = new RepositoryResponse();
         com.projectiq.indexerlocal.model.Repository repository = repositoryService.registerRepository(request.getPath());
         
-        copyToResponse(repository, response);
+        RepositoryResponse response = toResponse(repository);
         
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
-     * List all registered repositories.
+     * List all registered repositories with optional pagination, sorting, and filtering.
      */
     @GetMapping
-    @Operation(summary = "List repositories", description = "List all registered repositories")
-    public ResponseEntity<List<RepositoryResponse>> listRepositories() {
-        logger.info("Listing all repositories");
+    @Operation(summary = "List repositories", description = "List all registered repositories with optional filtering and pagination")
+    public ResponseEntity<Map<String, Object>> listRepositories(
+            @RequestParam(required = false) RepositoryStatus status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "id") String sortBy,
+            @RequestParam(defaultValue = "asc") String sortOrder) {
+        logger.info("Listing all repositories with pagination: page={}, size={}, sortBy={}, sortOrder={}, status={}", 
+            page, size, sortBy, sortOrder, status);
         
-        List<com.projectiq.indexerlocal.model.Repository> repositories = repositoryService.listRepositories();
-        List<RepositoryResponse> responses = repositories.stream()
-            .map(this::copyToResponse)
+        Map<String, Object> result = repositoryService.listRepositoriesWithPagination(page, size, sortBy, sortOrder, status);
+        
+        // Convert repository objects to response DTOs
+        List<RepositoryResponse> responses = ((List<com.projectiq.indexerlocal.model.Repository>) result.get("repositories")).stream()
+            .map(this::toResponse)
             .toList();
         
-        return ResponseEntity.ok(responses);
+        result.put("repositories", responses);
+        return ResponseEntity.ok(result);
     }
 
     /**
-     * Get a repository by ID.
+     * Get a repository by internal ID.
      */
-    @GetMapping("/{repositoryId}")
+    @GetMapping("/{id}")
     @Operation(summary = "Get repository details", description = "Retrieve details of a specific repository by its internal ID")
-    public ResponseEntity<RepositoryResponse> getRepository(@PathVariable Long repositoryId) {
-        logger.info("Getting repository by id: {}", repositoryId);
+    public ResponseEntity<RepositoryResponse> getRepository(@Parameter(description = "Repository internal ID") @PathVariable("id") Long id) {
+        logger.info("Getting repository by id: {}", id);
         
-        RepositoryResponse response = new RepositoryResponse();
-        com.projectiq.indexerlocal.model.Repository repository = repositoryService.getRepository(repositoryId);
-        
-        copyToResponse(repository, response);
+        com.projectiq.indexerlocal.model.Repository repository = repositoryService.getRepository(id);
+        RepositoryResponse response = toResponse(repository);
         
         return ResponseEntity.ok(response);
     }
 
     /**
-     * Delete a repository.
+     * Get a repository by its unique repository ID.
      */
-    @DeleteMapping("/{repositoryId}")
-    @Operation(summary = "Delete repository", description = "Remove a repository registration and its workspace")
-    public ResponseEntity<Void> deleteRepository(@Parameter(description = "Repository ID") @PathVariable Long repositoryId) {
-        logger.info("Deleting repository by id: {}", repositoryId);
+    @GetMapping("/by-id/{repositoryId}")
+    @Operation(summary = "Get repository by repositoryId", description = "Retrieve details of a specific repository by its unique repository ID")
+    public ResponseEntity<RepositoryResponse> getRepositoryByRepositoryId(
+            @Parameter(description = "Repository unique ID") @PathVariable("repositoryId") String repositoryId) {
+        logger.info("Getting repository by repositoryId: {}", repositoryId);
         
-        repositoryService.deleteRepository(repositoryId);
+        com.projectiq.indexerlocal.model.Repository repository = repositoryService.getRepositoryByRepositoryId(repositoryId);
+        RepositoryResponse response = toResponse(repository);
+        
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Update repository metadata.
+     */
+    @PutMapping("/{id}")
+    @Operation(summary = "Update repository", description = "Update repository metadata such as name and workspace path")
+    public ResponseEntity<RepositoryResponse> updateRepository(
+            @Parameter(description = "Repository internal ID") @PathVariable("id") Long id,
+            @RequestBody Map<String, String> request) {
+        logger.info("Updating repository: id={}", id);
+        
+        String name = request.get("name");
+        String description = request.get("description");
+        String workspacePath = request.get("workspacePath");
+        
+        com.projectiq.indexerlocal.model.Repository repository = repositoryService.updateRepository(id, name, description, workspacePath);
+        RepositoryResponse response = toResponse(repository);
+        
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Delete a repository and all its indexed data by unique repository ID.
+     */
+    @DeleteMapping("/by-id/{repositoryId}")
+    @Operation(summary = "Delete repository with all data", description = "Remove a repository registration, its workspace, and all indexed data")
+    public ResponseEntity<Void> deleteRepositoryWithAllData(
+            @Parameter(description = "Repository unique ID") @PathVariable("repositoryId") String repositoryId) {
+        logger.info("Deleting repository with all data by repositoryId: {}", repositoryId);
+        
+        repositoryService.deleteRepositoryWithAllData(repositoryId);
         
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Get repository management statistics.
+     */
+    @GetMapping("/statistics")
+    @Operation(summary = "Get repository statistics", description = "Retrieve repository management statistics including counts by status")
+    public ResponseEntity<Map<String, Object>> getRepositoryStatistics() {
+        logger.info("Getting repository management statistics");
+        
+        Map<String, Object> stats = repositoryService.getRepositoryStatistics();
+        return ResponseEntity.ok(stats);
     }
 
     /**
@@ -190,7 +246,7 @@ public class RepositoryControllerV1 {
     /**
      * Copy repository data to response DTO.
      */
-    private RepositoryResponse copyToResponse(com.projectiq.indexerlocal.model.Repository repository) {
+    private RepositoryResponse toResponse(com.projectiq.indexerlocal.model.Repository repository) {
         RepositoryResponse response = new RepositoryResponse();
         response.setId(repository.getId());
         response.setRepositoryId(repository.getRepositoryId());
@@ -199,22 +255,11 @@ public class RepositoryControllerV1 {
         response.setWorkspacePath(repository.getWorkspacePath());
         response.setRegistrationTimestamp(repository.getRegistrationTimestamp());
         response.setLastUpdatedTimestamp(repository.getLastUpdatedTimestamp());
+        response.setLastRefreshTimestamp(repository.getLastRefreshTimestamp());
+        response.setLastIndexingTimestamp(repository.getLastIndexingTimestamp());
         response.setStatus(repository.getStatus());
         response.setBuildSystem(repository.getBuildSystem());
         response.setTechnologyStack(repository.getTechnologyStack());
         return response;
-    }
-
-    private void copyToResponse(com.projectiq.indexerlocal.model.Repository repository, RepositoryResponse response) {
-        response.setId(repository.getId());
-        response.setRepositoryId(repository.getRepositoryId());
-        response.setRepositoryName(repository.getRepositoryName());
-        response.setOriginalPath(repository.getOriginalPath());
-        response.setWorkspacePath(repository.getWorkspacePath());
-        response.setRegistrationTimestamp(repository.getRegistrationTimestamp());
-        response.setLastUpdatedTimestamp(repository.getLastUpdatedTimestamp());
-        response.setStatus(repository.getStatus());
-        response.setBuildSystem(repository.getBuildSystem());
-        response.setTechnologyStack(repository.getTechnologyStack());
     }
 }
