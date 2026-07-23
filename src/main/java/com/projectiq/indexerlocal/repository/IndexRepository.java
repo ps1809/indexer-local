@@ -476,6 +476,81 @@ public class IndexRepository {
     }
 
     /**
+     * Save REST API endpoints and statistics to the spring_component table.
+     * Deletes old REST_API entries first, then inserts new ones.
+     */
+    public void saveRestApiEndpoints(String repositoryId, List<RestApiEndpoint> endpoints, RestApiStatistics statistics) {
+        // Delete old REST API entries for this repository
+        deleteSpringComponentsByRepository(repositoryId + ":REST_API");
+
+        // Insert endpoints as REST_ENDPOINT components
+        for (RestApiEndpoint endpoint : endpoints) {
+            SpringComponent component = new SpringComponent();
+            component.setRepositoryId(repositoryId + ":REST_API");
+            component.setClassName(endpoint.getClassName());
+            component.setComponentType("REST_ENDPOINT");
+            
+            // Encode HTTP method and path in componentName for storage
+            String fullPath = (endpoint.getHttpMethod() != null ? endpoint.getHttpMethod() : "") + 
+                              " " + (endpoint.getEndpointPath() != null ? endpoint.getEndpointPath() : "");
+            component.setComponentName(fullPath);
+            
+            // Store basepath in beanName
+            component.setBeanName(endpoint.getBasepath());
+            
+            // Mark as REST controller
+            component.setRestController(true);
+
+            // Store security info from annotations
+            if (endpoint.isPreAuthorize() || endpoint.isPostAuthorize() || 
+                endpoint.isRolesAllowed() || endpoint.isSecured()) {
+                component.setHasEnableMethodSecurity(true);
+                component.setPreAuthorize(endpoint.isPreAuthorize());
+                component.setPostAuthorize(endpoint.isPostAuthorize());
+                component.setRolesAllowed(endpoint.isRolesAllowed());
+                component.setSecured(endpoint.isSecured());
+            }
+
+            // Store produces/consumes media types in sourceFile
+            StringBuilder mediaTypes = new StringBuilder();
+            if (endpoint.getProducesMediaType() != null) {
+                mediaTypes.append("produces=").append(endpoint.getProducesMediaType());
+            }
+            if (endpoint.getConsumesMediaType() != null) {
+                if (!mediaTypes.isEmpty()) mediaTypes.append(";");
+                mediaTypes.append("consumes=").append(endpoint.getConsumesMediaType());
+            }
+            component.setSourceFile(mediaTypes.toString());
+
+            saveSpringComponent(component);
+        }
+
+        // Persist statistics as a special entry
+        SpringComponent statsEntry = new SpringComponent();
+        statsEntry.setRepositoryId(repositoryId + ":REST_API:STATISTICS");
+        statsEntry.setClassName("RestApiStatistics");
+        statsEntry.setComponentType("STATISTICS");
+        statsEntry.setComponentName("REST_API_STATISTICS");
+
+        // Store statistics JSON in beanName
+        StringBuilder statsJson = new StringBuilder("{");
+        statsJson.append("\"totalRestControllers\":").append(statistics.getTotalRestControllers()).append(",")
+                 .append("\"totalEndpoints\":").append(statistics.getTotalEndpoints()).append(",")
+                 .append("\"secureEndpoints\":").append(statistics.getSecureEndpoints()).append(",")
+                 .append("\"publicEndpoints\":").append(statistics.getPublicEndpoints()).append(",")
+                 .append("\"endpointsByGetMapping\":").append(statistics.getEndpointsByGetMapping()).append(",")
+                 .append("\"endpointsByPostMapping\":").append(statistics.getEndpointsByPostMapping()).append(",")
+                 .append("\"endpointsByPutMapping\":").append(statistics.getEndpointsByPutMapping()).append(",")
+                 .append("\"endpointsByDeleteMapping\":").append(statistics.getEndpointsByDeleteMapping()).append(",")
+                 .append("\"endpointsByPatchMapping\":").append(statistics.getEndpointsByPatchMapping()).append(",")
+                 .append("\"endpointsByRequestMapping\":").append(statistics.getEndpointsByRequestMapping());
+        statsJson.append("}");
+        statsEntry.setBeanName(statsJson.toString());
+
+        saveSpringComponent(statsEntry);
+    }
+
+    /**
      * Save a list of Spring components for a repository (deletes old ones first).
      */
     public void saveSpringComponents(String repositoryId, List<SpringComponent> components) {
