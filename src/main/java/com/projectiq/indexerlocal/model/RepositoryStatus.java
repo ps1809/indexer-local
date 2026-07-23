@@ -27,5 +27,10 @@ public enum RepositoryStatus {
     /**
      * Repository has encountered an error.
      */
-    FAILED
+    FAILED,
+
+    /**
+     * Repository metadata is being refreshed.
+     */
+    REFRESHING
 }

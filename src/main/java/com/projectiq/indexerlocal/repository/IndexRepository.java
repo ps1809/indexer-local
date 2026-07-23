@@ -600,6 +600,34 @@ public class IndexRepository {
         jdbcTemplate.update("DELETE FROM spring_component WHERE repository_id = ?", repositoryId);
     }
 
+    /**
+     * Delete all index data for a specific repository.
+     * Clears file_index, class_info, method_info, field_info, annotation_info, import_info,
+     * spring_component, and file_tracking tables for the given repository.
+     */
+    public void deleteAllByRepositoryId(String repositoryId) {
+        // Delete file tracking records first (foreign key dependency)
+        jdbcTemplate.update("DELETE FROM file_tracking WHERE repository_id = ?", repositoryId);
+
+        // Get file indices for this repository and delete associated data
+        List<FileIndex> files = findAllFilesByRepositoryId(repositoryId);
+        for (FileIndex file : files) {
+            // Delete imports
+            jdbcTemplate.update("DELETE FROM import_info WHERE file_index_id = ?", file.getId());
+            // Delete annotations (class-level)
+            jdbcTemplate.update("DELETE FROM annotation_info WHERE target_type = 'CLASS' AND target_id = ?", file.getId());
+        }
+
+        // Delete all file indexes for this repository
+        jdbcTemplate.update("DELETE FROM file_index WHERE file_path LIKE ?", repositoryId + "%");
+
+        // Delete spring components for this repository
+        jdbcTemplate.update("DELETE FROM spring_component WHERE repository_id LIKE ?", repositoryId + "%");
+
+        // Delete indexing stats for this repository
+        jdbcTemplate.update("DELETE FROM indexing_stats WHERE repository_id = ?", repositoryId);
+    }
+
     // ==================== Repository-Scoped Spring Component Queries ====================
 
     /**
