@@ -410,6 +410,15 @@ public class RepositoryRepository {
             logger.warn("Failed to delete chat history for {}: {}", repositoryId, e.getMessage());
         }
 
+        // Delete test generation history
+        try {
+            String deleteTestGenHistorySql = "DELETE FROM test_generation_history WHERE repository_id = ?";
+            jdbcTemplate.update(deleteTestGenHistorySql, repositoryId);
+            logger.info("Deleted test generation history for: {}", repositoryId);
+        } catch (Exception e) {
+            logger.warn("Failed to delete test generation history for {}: {}", repositoryId, e.getMessage());
+        }
+
         // Delete repository record last
         String sql = "DELETE FROM repository WHERE repository_id = ?";
         jdbcTemplate.update(sql, repositoryId);
