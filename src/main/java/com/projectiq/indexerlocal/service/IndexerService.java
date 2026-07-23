@@ -6,12 +6,16 @@ import com.projectiq.indexerlocal.extractor.ClassExtractor;
 import com.projectiq.indexerlocal.extractor.FieldExtractor;
 import com.projectiq.indexerlocal.extractor.ImportExtractor;
 import com.projectiq.indexerlocal.extractor.MethodInfoExtractor;
+import com.projectiq.indexerlocal.model.AnnotationInfo;
 import com.projectiq.indexerlocal.model.ClassInfo;
 import com.projectiq.indexerlocal.model.FieldInfo;
 import com.projectiq.indexerlocal.model.FileIndex;
 import com.projectiq.indexerlocal.model.IndexResult;
 import com.projectiq.indexerlocal.model.MethodInfo;
+import com.projectiq.indexerlocal.model.SpringComponent;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import com.projectiq.indexerlocal.repository.IndexRepository;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +35,11 @@ public class IndexerService {
     private final FieldExtractor fieldExtractor = new FieldExtractor();
     private final MethodInfoExtractor methodInfoExtractor = new MethodInfoExtractor();
     private final ImportExtractor importExtractor = new ImportExtractor();
+    private final IndexRepository indexRepository;
+
+    public IndexerService(IndexRepository indexRepository) {
+        this.indexRepository = indexRepository;
+    }
 
     /**
      * Index a Spring Boot project at the given path.
@@ -94,5 +103,158 @@ public class IndexerService {
             System.err.println("Failed to process file: " + filePath + " - " + e.getMessage());
             return null;
         }
+    }
+
+    // ==================== File Indexing Operations ====================
+
+    /**
+     * Index a single uploaded file.
+     */
+    public void indexFile(MultipartFile file, String filePath) throws IOException {
+        String content = new String(file.getBytes());
+        CompilationUnit cu = javaParser.parse(content).getResult()
+                .orElseThrow(() -> new IOException("Failed to parse file"));
+
+        String fileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "unknown";
+        if (filePath != null) {
+            fileName = filePath;
+        }
+
+        FileIndex fileIndex = new FileIndex(fileName, fileName);
+
+        classExtractor.extract(cu, fileIndex);
+        importExtractor.extract(cu, fileIndex);
+
+        long totalFields = fileIndex.getClasses().stream()
+                .mapToLong(c -> c.getFields() != null ? c.getFields().size() : 0)
+                .sum();
+        long totalMethods = fileIndex.getClasses().stream()
+                .mapToLong(c -> c.getMethods() != null ? c.getMethods().size() : 0)
+                .sum();
+        long totalAnnotations = fileIndex.getClasses().stream()
+                .mapToLong(c -> c.getAnnotations() != null ? c.getAnnotations().size() : 0)
+                .sum();
+
+        fileIndex.setFieldCount(totalFields);
+        fileIndex.setMethodCount(totalMethods);
+        fileIndex.setAnnotationCount(totalAnnotations);
+
+        indexRepository.saveIndexResult(new IndexResult(fileName, List.of(fileIndex)));
+    }
+
+    /**
+     * Index a directory.
+     */
+    public void indexDirectory(String directoryPath) {
+        IndexResult result = index(directoryPath);
+        indexRepository.saveIndexResult(result);
+    }
+
+    // ==================== File Query Operations ====================
+
+    /**
+     * List all indexed source files.
+     */
+    public List<FileIndex> listFiles() {
+        return indexRepository.findAllFiles();
+    }
+
+    /**
+     * Get a source file by ID.
+     */
+    public FileIndex getFileById(Long id) {
+        return indexRepository.findFileById(id);
+    }
+
+    /**
+     * Get a source file by path.
+     */
+    public FileIndex getFileByPath(String path) {
+        return indexRepository.findFileByPath(path);
+    }
+
+    // ==================== Class Query Operations ====================
+
+    /**
+     * List all Java classes.
+     */
+    public List<ClassInfo> listClasses() {
+        return indexRepository.findAllClasses();
+    }
+
+    /**
+     * Get a class by ID.
+     */
+    public ClassInfo getClassById(Long id) {
+        return indexRepository.findClassById(id);
+    }
+
+    /**
+     * Get a class by name.
+     */
+    public ClassInfo getClassByName(String name) {
+        return indexRepository.findClassByName(name);
+    }
+
+    // ==================== Method Query Operations ====================
+
+    /**
+     * List all methods.
+     */
+    public List<MethodInfo> listMethods() {
+        return indexRepository.findAllMethods();
+    }
+
+    /**
+     * Get a method by ID.
+     */
+    public MethodInfo getMethodById(Long id) {
+        return indexRepository.findMethodById(id);
+    }
+
+    /**
+     * Get a method by name.
+     */
+    public MethodInfo getMethodByName(String name) {
+        return indexRepository.findMethodByName(name);
+    }
+
+    // ==================== Field Query Operations ====================
+
+    /**
+     * List all fields.
+     */
+    public List<FieldInfo> listFields() {
+        return indexRepository.findAllFields();
+    }
+
+    /**
+     * Get a field by ID.
+     */
+    public FieldInfo getFieldById(Long id) {
+        return indexRepository.findFieldById(id);
+    }
+
+    /**
+     * Get a field by name.
+     */
+    public FieldInfo getFieldByName(String name) {
+        return indexRepository.findFieldByName(name);
+    }
+
+    // ==================== Spring Component Query Operations ====================
+
+    /**
+     * List all Spring components.
+     */
+    public List<SpringComponent> listSpringComponents() {
+        return indexRepository.findAllSpringComponents();
+    }
+
+    /**
+     * Filter Spring components by type.
+     */
+    public List<SpringComponent> getSpringComponentsByType(String type) {
+        return indexRepository.findSpringComponentsByType(type);
     }
 }
