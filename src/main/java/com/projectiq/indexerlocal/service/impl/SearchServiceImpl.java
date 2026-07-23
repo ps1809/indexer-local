@@ -36,87 +36,44 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public List<Map<String, Object>> generalSearch(String repositoryId, String query, String packageName, String annotation) {
         List<Map<String, Object>> results = new ArrayList<>();
+        String searchPattern = (query != null && !query.isEmpty()) ? "%" + query.toLowerCase() + "%" : "%";
 
-        // Search classes
-        String classSql = "SELECT ci.*, fi.file_path FROM class_info ci INNER JOIN file_index fi ON ci.file_index_id = fi.id WHERE 1=1";
-        List<ClassInfo> classes = new ArrayList<>();
-        if (query != null && !query.isEmpty()) {
-            classSql += " AND LOWER(ci.class_name) LIKE LOWER(?)";
-        }
-        if (packageName != null && !packageName.isEmpty()) {
-            classSql += " AND LOWER(fi.file_path) LIKE LOWER(?)";
-        }
-
-        List<Object> classParams = new ArrayList<>();
-        if (query != null && !query.isEmpty()) {
-            classParams.add("%" + query + "%");
-        } else {
-            classSql += " AND LOWER(ci.class_name) LIKE LOWER(?)";
-            classParams.add("%%");
-        }
-        if (packageName != null && !packageName.isEmpty()) {
-            classParams.add("%" + packageName + "%");
-        }
-
-        List<ClassInfo> allClasses = indexRepository.findAllClasses();
-        for (ClassInfo cls : allClasses) {
-            boolean match = true;
-            if (query != null && !query.isEmpty()) {
-                match = cls.getClassName() != null && cls.getClassName().toLowerCase().contains(
-                    (query != null ? query : "").toLowerCase());
-            }
-            if (match && packageName != null && !packageName.isEmpty()) {
-                String filePath = findFilePathForClass(cls.getId());
-                match = filePath != null && filePath.toLowerCase().contains(packageName.toLowerCase());
-            }
-            if (match) {
-                classes.add(cls);
-            }
-        }
-
+        // Search classes using database query
+        List<ClassInfo> classes = indexRepository.searchClassesByName(query != null ? query : "");
         for (ClassInfo cls : classes) {
+            if (packageName != null && !packageName.isEmpty()) {
+                String filePath = findFilePathForClass(cls.getId());
+                if (filePath == null || !filePath.toLowerCase().contains(packageName.toLowerCase())) {
+                    continue;
+                }
+            }
             Map<String, Object> result = new HashMap<>();
             result.put("type", "CLASS");
             result.put("data", toClassMap(cls));
             results.add(result);
         }
 
-        // Search methods
-        List<MethodInfo> allMethods = indexRepository.findAllMethods();
-        for (MethodInfo method : allMethods) {
-            boolean match = true;
-            if (query != null && !query.isEmpty()) {
-                match = method.getMethodName() != null && method.getMethodName().toLowerCase().contains(
-                    (query != null ? query : "").toLowerCase());
-            }
-            if (match) {
-                Map<String, Object> result = new HashMap<>();
-                result.put("type", "METHOD");
-                result.put("data", toMethodMap(method));
-                results.add(result);
-            }
+        // Search methods using database query
+        List<MethodInfo> methods = indexRepository.searchMethodsByName(query != null ? query : "");
+        for (MethodInfo method : methods) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("type", "METHOD");
+            result.put("data", toMethodMap(method));
+            results.add(result);
         }
 
-        // Search fields
-        List<FieldInfo> allFields = indexRepository.findAllFields();
-        for (FieldInfo field : allFields) {
-            boolean match = true;
-            if (query != null && !query.isEmpty()) {
-                match = field.getFieldName() != null && field.getFieldName().toLowerCase().contains(
-                    (query != null ? query : "").toLowerCase());
-            }
-            if (match) {
-                Map<String, Object> result = new HashMap<>();
-                result.put("type", "FIELD");
-                result.put("data", toFieldMap(field));
-                results.add(result);
-            }
+        // Search fields using database query
+        List<FieldInfo> fields = indexRepository.searchFieldsByName(query != null ? query : "");
+        for (FieldInfo field : fields) {
+            Map<String, Object> result = new HashMap<>();
+            result.put("type", "FIELD");
+            result.put("data", toFieldMap(field));
+            results.add(result);
         }
 
-        // Search annotations
-        String searchPattern = query != null && !query.isEmpty() ? query : "";
-        List<AnnotationInfo> allAnnotations = indexRepository.searchAnnotationsByName(searchPattern);
-        for (AnnotationInfo annotationInfo : allAnnotations) {
+        // Search annotations using database query
+        List<AnnotationInfo> annotations = indexRepository.searchAnnotationsByName(query != null ? query : "");
+        for (AnnotationInfo annotationInfo : annotations) {
             Map<String, Object> result = new HashMap<>();
             result.put("type", "ANNOTATION");
             result.put("data", toAnnotationMap(annotationInfo));
@@ -124,8 +81,8 @@ public class SearchServiceImpl implements SearchService {
         }
 
         // Search Spring components
-        List<SpringComponent> allComponents = indexRepository.findAllSpringComponents();
-        for (SpringComponent component : allComponents) {
+        List<SpringComponent> components = indexRepository.findAllSpringComponents();
+        for (SpringComponent component : components) {
             boolean match = true;
             if (query != null && !query.isEmpty()) {
                 String nameToSearch = (component.getClassName() != null ? component.getClassName() : "") + " " +
@@ -151,41 +108,20 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public ClassSearchResult searchClasses(String repositoryId, String query, String packageName, int page, int pageSize, String sortBy, String sortDir) {
         List<Map<String, Object>> results = new ArrayList<>();
-        long totalElements = 0;
 
-        String sql = "SELECT ci.*, fi.file_path FROM class_info ci INNER JOIN file_index fi ON ci.file_index_id = fi.id WHERE 1=1";
-        List<Object> params = new ArrayList<>();
-
-        if (query != null && !query.isEmpty()) {
-            sql += " AND LOWER(ci.class_name) LIKE LOWER(?)";
-            params.add("%" + query + "%");
-        }
-        if (packageName != null && !packageName.isEmpty()) {
-            sql += " AND LOWER(fi.file_path) LIKE LOWER(?)";
-            params.add("%" + packageName + "%");
-        }
-
-        // Apply sorting
-        String sortColumn = getSortColumn(sortBy, "CLASS");
-        sql += " ORDER BY " + sortColumn + " " + (sortDir != null && sortDir.toUpperCase().equals("DESC") ? "DESC" : "ASC");
-
-        List<ClassInfo> allClasses = indexRepository.findAllClasses();
-        for (ClassInfo cls : allClasses) {
-            boolean match = true;
-            if (query != null && !query.isEmpty()) {
-                match = cls.getClassName() != null && cls.getClassName().toLowerCase().contains(
-                    (query != null ? query : "").toLowerCase());
-            }
-            if (match && packageName != null && !packageName.isEmpty()) {
+        // Use database search instead of loading all classes
+        List<ClassInfo> classes = indexRepository.searchClassesByName(query != null ? query : "");
+        for (ClassInfo cls : classes) {
+            if (packageName != null && !packageName.isEmpty()) {
                 String filePath = findFilePathForClass(cls.getId());
-                match = filePath != null && filePath.toLowerCase().contains(packageName.toLowerCase());
+                if (filePath == null || !filePath.toLowerCase().contains(packageName.toLowerCase())) {
+                    continue;
+                }
             }
-            if (match) {
-                results.add(toClassMap(cls));
-            }
+            results.add(toClassMap(cls));
         }
 
-        totalElements = results.size();
+        long totalElements = results.size();
 
         // Apply pagination
         int fromIndex = page * pageSize;
@@ -202,12 +138,12 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public ClassSearchResult searchClassesByType(String repositoryId, String query, String entityType, String visibility, String packageName, int page, int pageSize, String sortBy, String sortDir) {
         List<Map<String, Object>> results = new ArrayList<>();
-        long totalElements = 0;
 
         String upperEntityType = entityType != null ? entityType.toUpperCase() : null;
 
-        List<ClassInfo> allClasses = indexRepository.findAllClasses();
-        for (ClassInfo cls : allClasses) {
+        // Use database search instead of loading all classes
+        List<ClassInfo> classes = indexRepository.searchClassesByName(query != null ? query : "");
+        for (ClassInfo cls : classes) {
             boolean match = true;
 
             if (upperEntityType != null && !upperEntityType.isEmpty()) {
@@ -215,9 +151,6 @@ public class SearchServiceImpl implements SearchService {
             }
             if (match && visibility != null && !visibility.isEmpty()) {
                 match = visibility.toUpperCase().equals(cls.getVisibility());
-            }
-            if (match && query != null && !query.isEmpty()) {
-                match = cls.getClassName() != null && cls.getClassName().toLowerCase().contains(query.toLowerCase());
             }
             if (match && packageName != null && !packageName.isEmpty()) {
                 String filePath = findFilePathForClass(cls.getId());
@@ -229,7 +162,7 @@ public class SearchServiceImpl implements SearchService {
             }
         }
 
-        totalElements = results.size();
+        long totalElements = results.size();
 
         // Apply pagination
         int fromIndex = page * pageSize;
@@ -248,21 +181,14 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public MethodSearchResult searchMethods(String repositoryId, String query, String packageName, int page, int pageSize, String sortBy, String sortDir) {
         List<Map<String, Object>> results = new ArrayList<>();
-        long totalElements = 0;
 
-        List<MethodInfo> allMethods = indexRepository.findAllMethods();
-        for (MethodInfo method : allMethods) {
-            boolean match = true;
-            if (query != null && !query.isEmpty()) {
-                match = method.getMethodName() != null && method.getMethodName().toLowerCase().contains(query.toLowerCase());
-            }
-
-            if (match) {
-                results.add(toMethodMap(method));
-            }
+        // Use database search instead of loading all methods
+        List<MethodInfo> methods = indexRepository.searchMethodsByName(query != null ? query : "");
+        for (MethodInfo method : methods) {
+            results.add(toMethodMap(method));
         }
 
-        totalElements = results.size();
+        long totalElements = results.size();
 
         // Apply pagination
         int fromIndex = page * pageSize;
@@ -281,21 +207,14 @@ public class SearchServiceImpl implements SearchService {
     @Override
     public FieldSearchResult searchFields(String repositoryId, String query, String packageName, int page, int pageSize, String sortBy, String sortDir) {
         List<Map<String, Object>> results = new ArrayList<>();
-        long totalElements = 0;
 
-        List<FieldInfo> allFields = indexRepository.findAllFields();
-        for (FieldInfo field : allFields) {
-            boolean match = true;
-            if (query != null && !query.isEmpty()) {
-                match = field.getFieldName() != null && field.getFieldName().toLowerCase().contains(query.toLowerCase());
-            }
-
-            if (match) {
-                results.add(toFieldMap(field));
-            }
+        // Use database search instead of loading all fields
+        List<FieldInfo> fields = indexRepository.searchFieldsByName(query != null ? query : "");
+        for (FieldInfo field : fields) {
+            results.add(toFieldMap(field));
         }
 
-        totalElements = results.size();
+        long totalElements = results.size();
 
         // Apply pagination
         int fromIndex = page * pageSize;
@@ -552,26 +471,6 @@ public class SearchServiceImpl implements SearchService {
         String sql = "SELECT fi.file_path FROM file_index fi INNER JOIN class_info ci ON ci.file_index_id = fi.id WHERE ci.id = ?";
         List<String> results = jdbcTemplate.queryForList(sql, String.class, classId);
         return results.isEmpty() ? null : results.get(0);
-    }
-
-    private boolean matchesQuery(String query, String value) {
-        if (query == null || query.isEmpty()) {
-            return true;
-        }
-        if (value == null) {
-            return false;
-        }
-        return value.toLowerCase().contains(query.toLowerCase());
-    }
-
-    private boolean matchesPackage(String packageName, String className) {
-        if (packageName == null || packageName.isEmpty()) {
-            return true;
-        }
-        if (className == null) {
-            return false;
-        }
-        return className.toLowerCase().contains(packageName.toLowerCase());
     }
 
     private boolean hasAnnotation(SpringComponent component, String annotation) {
