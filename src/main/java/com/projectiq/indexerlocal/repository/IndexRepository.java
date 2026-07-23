@@ -63,8 +63,8 @@ public class IndexRepository {
         method.setMethodSignature(rs.getString("method_signature"));
         method.setReturnType(rs.getString("return_type"));
         method.setVisibility(rs.getString("visibility"));
-        method.setStatic(rs.getInt("is_static") == 1);
-        method.setAbstract(rs.getInt("is_abstract") == 1);
+        method.setStatic(rs.getInt("is_static") != 0);
+        method.setAbstract(rs.getInt("is_abstract") != 0);
         String parameters = rs.getString("parameters");
         if (parameters != null && !parameters.isEmpty()) {
             method.setParameters(List.of(parameters.split(",")));
@@ -83,18 +83,68 @@ public class IndexRepository {
         field.setFieldName(rs.getString("field_name"));
         field.setFieldType(rs.getString("field_type"));
         field.setVisibility(rs.getString("visibility"));
-        field.setStatic(rs.getInt("is_static") == 1);
-        field.setFinal(rs.getInt("is_final") == 1);
+        field.setStatic(rs.getInt("is_static") != 0);
+        field.setFinal(rs.getInt("is_final") != 0);
         return field;
     };
 
     private final RowMapper<SpringComponent> springComponentRowMapper = (rs, rowNum) -> {
         SpringComponent component = new SpringComponent();
         component.setId(rs.getLong("id"));
+        component.setRepositoryId(rs.getString("repository_id"));
         component.setClassId(rs.getLong("class_id"));
+        component.setFileIndexId(rs.getLong("file_index_id"));
+        component.setComponentName(rs.getString("component_name"));
         component.setComponentType(rs.getString("component_type"));
         component.setClassName(rs.getString("class_name"));
-        component.setFileIndexId(rs.getLong("file_index_id"));
+        component.setPackageName(rs.getString("package_name"));
+        component.setSourceFile(rs.getString("source_file"));
+        
+        // Boolean flags from INTEGER columns (0 or 1)
+        component.setComponent(rs.getInt("is_component") != 0);
+        component.setService(rs.getInt("is_service") != 0);
+        component.setRepository(rs.getInt("is_repository") != 0);
+        component.setController(rs.getInt("is_controller") != 0);
+        component.setRestController(rs.getInt("is_rest_controller") != 0);
+        component.setConfiguration(rs.getInt("is_configuration") != 0);
+        component.setBean(rs.getInt("is_bean") != 0);
+        component.setConfigurationProperties(rs.getInt("is_configuration_properties") != 0);
+        component.setPropertySource(rs.getInt("is_property_source") != 0);
+        component.setImport(rs.getInt("is_import") != 0);
+        component.setAutowired(rs.getInt("has_autowired") != 0);
+        component.setInject(rs.getInt("has_inject") != 0);
+        component.setResource(rs.getInt("has_resource") != 0);
+        component.setHasConstructorInjection(rs.getInt("has_constructor_injection") != 0);
+        component.setHasSetterInjection(rs.getInt("has_setter_injection") != 0);
+        component.setControllerAdvice(rs.getInt("is_controller_advice") != 0);
+        component.setRestControllerAdvice(rs.getInt("is_rest_controller_advice") != 0);
+        component.setCrossOrigin(rs.getInt("has_cross_origin") != 0);
+        component.setResponseBody(rs.getInt("has_response_body") != 0);
+        component.setTransactional(rs.getInt("has_transactional") != 0);
+        component.setTransactionPropagation(rs.getString("transaction_propagation"));
+        component.setTransactionIsolation(rs.getString("transaction_isolation"));
+        component.setHasEnableScheduling(rs.getInt("has_enable_scheduling") != 0);
+        component.setScheduled(rs.getInt("has_scheduled") != 0);
+        component.setHasEnableAsync(rs.getInt("has_enable_async") != 0);
+        component.setAsync(rs.getInt("has_async") != 0);
+        component.setHasEnableCaching(rs.getInt("has_enable_caching") != 0);
+        component.setCacheable(rs.getInt("has_cacheable") != 0);
+        component.setCachePut(rs.getInt("has_cache_put") != 0);
+        component.setCacheEvict(rs.getInt("has_cache_evict") != 0);
+        component.setHasEnableWebSecurity(rs.getInt("has_enable_web_security") != 0);
+        component.setHasEnableMethodSecurity(rs.getInt("has_enable_method_security") != 0);
+        component.setPreAuthorize(rs.getInt("has_pre_authorize") != 0);
+        component.setPostAuthorize(rs.getInt("has_post_authorize") != 0);
+        component.setRolesAllowed(rs.getInt("has_roles_allowed") != 0);
+        component.setSecured(rs.getInt("has_secured") != 0);
+        component.setEventListener(rs.getInt("has_event_listener") != 0);
+        component.setKafkaListener(rs.getInt("has_kafka_listener") != 0);
+        component.setRabbitListener(rs.getInt("has_rabbit_listener") != 0);
+        component.setJmsListener(rs.getInt("has_jms_listener") != 0);
+        
+        component.setBeanName(rs.getString("bean_name"));
+        component.setDetectedAt(rs.getTimestamp("detected_at") != null ? 
+                rs.getTimestamp("detected_at").toLocalDateTime() : null);
         return component;
     };
 
@@ -170,10 +220,56 @@ public class IndexRepository {
         String sqlCreateSpringComponent = 
             "CREATE TABLE IF NOT EXISTS spring_component (" +
             "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+            "repository_id TEXT, " +
             "class_id INTEGER, " +
-            "component_type TEXT NOT NULL, " +
-            "class_name TEXT NOT NULL, " +
             "file_index_id INTEGER, " +
+            "component_name TEXT, " +
+            "component_type TEXT NOT NULL, " +
+            "class_name TEXT, " +
+            "package_name TEXT, " +
+            "source_file TEXT, " +
+            "is_component INTEGER DEFAULT 0, " +
+            "is_service INTEGER DEFAULT 0, " +
+            "is_repository INTEGER DEFAULT 0, " +
+            "is_controller INTEGER DEFAULT 0, " +
+            "is_rest_controller INTEGER DEFAULT 0, " +
+            "is_configuration INTEGER DEFAULT 0, " +
+            "is_bean INTEGER DEFAULT 0, " +
+            "is_configuration_properties INTEGER DEFAULT 0, " +
+            "is_property_source INTEGER DEFAULT 0, " +
+            "is_import INTEGER DEFAULT 0, " +
+            "has_autowired INTEGER DEFAULT 0, " +
+            "has_inject INTEGER DEFAULT 0, " +
+            "has_resource INTEGER DEFAULT 0, " +
+            "has_constructor_injection INTEGER DEFAULT 0, " +
+            "has_setter_injection INTEGER DEFAULT 0, " +
+            "is_controller_advice INTEGER DEFAULT 0, " +
+            "is_rest_controller_advice INTEGER DEFAULT 0, " +
+            "has_cross_origin INTEGER DEFAULT 0, " +
+            "has_response_body INTEGER DEFAULT 0, " +
+            "has_transactional INTEGER DEFAULT 0, " +
+            "transaction_propagation TEXT, " +
+            "transaction_isolation TEXT, " +
+            "has_enable_scheduling INTEGER DEFAULT 0, " +
+            "has_scheduled INTEGER DEFAULT 0, " +
+            "has_enable_async INTEGER DEFAULT 0, " +
+            "has_async INTEGER DEFAULT 0, " +
+            "has_enable_caching INTEGER DEFAULT 0, " +
+            "has_cacheable INTEGER DEFAULT 0, " +
+            "has_cache_put INTEGER DEFAULT 0, " +
+            "has_cache_evict INTEGER DEFAULT 0, " +
+            "has_enable_web_security INTEGER DEFAULT 0, " +
+            "has_enable_method_security INTEGER DEFAULT 0, " +
+            "has_pre_authorize INTEGER DEFAULT 0, " +
+            "has_post_authorize INTEGER DEFAULT 0, " +
+            "has_roles_allowed INTEGER DEFAULT 0, " +
+            "has_secured INTEGER DEFAULT 0, " +
+            "has_event_listener INTEGER DEFAULT 0, " +
+            "has_kafka_listener INTEGER DEFAULT 0, " +
+            "has_rabbit_listener INTEGER DEFAULT 0, " +
+            "has_jms_listener INTEGER DEFAULT 0, " +
+            "bean_name TEXT, " +
+            "detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
             "FOREIGN KEY (class_id) REFERENCES class_info(id), " +
             "FOREIGN KEY (file_index_id) REFERENCES file_index(id))";
 
@@ -319,19 +415,189 @@ public class IndexRepository {
     }
 
     public Long saveSpringComponent(SpringComponent component) {
-        String sql = "INSERT INTO spring_component (class_id, component_type, class_name, file_index_id) VALUES (?, ?, ?, ?)";
+        String sql = "INSERT INTO spring_component (repository_id, class_id, file_index_id, component_name, component_type, class_name, package_name, source_file, is_component, is_service, is_repository, is_controller, is_rest_controller, is_configuration, is_bean, is_configuration_properties, is_property_source, is_import, has_autowired, has_inject, has_resource, has_constructor_injection, has_setter_injection, is_controller_advice, is_rest_controller_advice, has_cross_origin, has_response_body, has_transactional, transaction_propagation, transaction_isolation, has_enable_scheduling, has_scheduled, has_enable_async, has_async, has_enable_caching, has_cacheable, has_cache_put, has_cache_evict, has_enable_web_security, has_enable_method_security, has_pre_authorize, has_post_authorize, has_roles_allowed, has_secured, has_event_listener, has_kafka_listener, has_rabbit_listener, has_jms_listener, bean_name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS);
-            ps.setLong(1, component.getClassId());
-            ps.setString(2, component.getComponentType());
-            ps.setString(3, component.getClassName());
-            ps.setLong(4, component.getFileIndexId());
+            ps.setString(1, component.getRepositoryId());
+            ps.setLong(2, component.getClassId() != null ? component.getClassId() : 0);
+            ps.setLong(3, component.getFileIndexId() != null ? component.getFileIndexId() : 0);
+            ps.setString(4, component.getComponentName());
+            ps.setString(5, component.getComponentType());
+            ps.setString(6, component.getClassName());
+            ps.setString(7, component.getPackageName());
+            ps.setString(8, component.getSourceFile());
+            ps.setInt(9, component.isComponent() ? 1 : 0);
+            ps.setInt(10, component.isService() ? 1 : 0);
+            ps.setInt(11, component.isRepository() ? 1 : 0);
+            ps.setInt(12, component.isController() ? 1 : 0);
+            ps.setInt(13, component.isRestController() ? 1 : 0);
+            ps.setInt(14, component.isConfiguration() ? 1 : 0);
+            ps.setInt(15, component.isBean() ? 1 : 0);
+            ps.setInt(16, component.isConfigurationProperties() ? 1 : 0);
+            ps.setInt(17, component.isPropertySource() ? 1 : 0);
+            ps.setInt(18, component.isImport() ? 1 : 0);
+            ps.setInt(19, component.hasAutowired() ? 1 : 0);
+            ps.setInt(20, component.hasInject() ? 1 : 0);
+            ps.setInt(21, component.hasResource() ? 1 : 0);
+            ps.setInt(22, component.isHasConstructorInjection() ? 1 : 0);
+            ps.setInt(23, component.isHasSetterInjection() ? 1 : 0);
+            ps.setInt(24, component.isControllerAdvice() ? 1 : 0);
+            ps.setInt(25, component.isRestControllerAdvice() ? 1 : 0);
+            ps.setInt(26, component.hasCrossOrigin() ? 1 : 0);
+            ps.setInt(27, component.hasResponseBody() ? 1 : 0);
+            ps.setInt(28, component.hasTransactional() ? 1 : 0);
+            ps.setString(29, component.getTransactionPropagation());
+            ps.setString(30, component.getTransactionIsolation());
+            ps.setInt(31, component.isHasEnableScheduling() ? 1 : 0);
+            ps.setInt(32, component.hasScheduled() ? 1 : 0);
+            ps.setInt(33, component.isHasEnableAsync() ? 1 : 0);
+            ps.setInt(34, component.hasAsync() ? 1 : 0);
+            ps.setInt(35, component.isHasEnableCaching() ? 1 : 0);
+            ps.setInt(36, component.hasCacheable() ? 1 : 0);
+            ps.setInt(37, component.hasCachePut() ? 1 : 0);
+            ps.setInt(38, component.hasCacheEvict() ? 1 : 0);
+            ps.setInt(39, component.isHasEnableWebSecurity() ? 1 : 0);
+            ps.setInt(40, component.isHasEnableMethodSecurity() ? 1 : 0);
+            ps.setInt(41, component.hasPreAuthorize() ? 1 : 0);
+            ps.setInt(42, component.hasPostAuthorize() ? 1 : 0);
+            ps.setInt(43, component.hasRolesAllowed() ? 1 : 0);
+            ps.setInt(44, component.hasSecured() ? 1 : 0);
+            ps.setInt(45, component.hasEventListener() ? 1 : 0);
+            ps.setInt(46, component.hasKafkaListener() ? 1 : 0);
+            ps.setInt(47, component.hasRabbitListener() ? 1 : 0);
+            ps.setInt(48, component.hasJmsListener() ? 1 : 0);
+            ps.setString(49, component.getBeanName());
             return ps;
         }, keyHolder);
         Long id = keyHolder.getKey() != null ? keyHolder.getKey().longValue() : null;
         component.setId(id);
         return id;
+    }
+
+    /**
+     * Save a list of Spring components for a repository (deletes old ones first).
+     */
+    public void saveSpringComponents(String repositoryId, List<SpringComponent> components) {
+        // Delete old components for this repository
+        deleteSpringComponentsByRepository(repositoryId);
+
+        // Insert new components
+        for (SpringComponent component : components) {
+            component.setRepositoryId(repositoryId);
+            saveSpringComponent(component);
+        }
+    }
+
+    public void deleteSpringComponentsByRepository(String repositoryId) {
+        jdbcTemplate.update("DELETE FROM spring_component WHERE repository_id = ?", repositoryId);
+    }
+
+    // ==================== Repository-Scoped Spring Component Queries ====================
+
+    /**
+     * Find all Spring components for a repository.
+     */
+    public List<SpringComponent> findSpringComponentsByRepository(String repositoryId) {
+        String sql = "SELECT id, repository_id, class_id, file_index_id, component_name, component_type, class_name, package_name, source_file, " +
+                "is_component, is_service, is_repository, is_controller, is_rest_controller, is_configuration, is_bean, " +
+                "is_configuration_properties, is_property_source, is_import, has_autowired, has_inject, has_resource, " +
+                "has_constructor_injection, has_setter_injection, is_controller_advice, is_rest_controller_advice, " +
+                "has_cross_origin, has_response_body, has_transactional, transaction_propagation, transaction_isolation, " +
+                "has_enable_scheduling, has_scheduled, has_enable_async, has_async, has_enable_caching, has_cacheable, " +
+                "has_cache_put, has_cache_evict, has_enable_web_security, has_enable_method_security, has_pre_authorize, " +
+                "has_post_authorize, has_roles_allowed, has_secured, has_event_listener, has_kafka_listener, has_rabbit_listener, " +
+                "has_jms_listener, bean_name, detected_at FROM spring_component WHERE repository_id = ? ORDER BY id";
+        return jdbcTemplate.query(sql, springComponentRowMapper, repositoryId);
+    }
+
+    /**
+     * Find Spring components by repository and type.
+     */
+    public List<SpringComponent> findSpringComponentsByRepositoryAndType(String repositoryId, String componentType) {
+        String sql = "SELECT id, repository_id, class_id, file_index_id, component_name, component_type, class_name, package_name, source_file, " +
+                "is_component, is_service, is_repository, is_controller, is_rest_controller, is_configuration, is_bean, " +
+                "is_configuration_properties, is_property_source, is_import, has_autowired, has_inject, has_resource, " +
+                "has_constructor_injection, has_setter_injection, is_controller_advice, is_rest_controller_advice, " +
+                "has_cross_origin, has_response_body, has_transactional, transaction_propagation, transaction_isolation, " +
+                "has_enable_scheduling, has_scheduled, has_enable_async, has_async, has_enable_caching, has_cacheable, " +
+                "has_cache_put, has_cache_evict, has_enable_web_security, has_enable_method_security, has_pre_authorize, " +
+                "has_post_authorize, has_roles_allowed, has_secured, has_event_listener, has_kafka_listener, has_rabbit_listener, " +
+                "has_jms_listener, bean_name, detected_at FROM spring_component WHERE repository_id = ? AND UPPER(component_type) = UPPER(?) ORDER BY id";
+        return jdbcTemplate.query(sql, springComponentRowMapper, repositoryId, componentType);
+    }
+
+    /**
+     * Find Spring components by annotation in a repository.
+     */
+    public List<SpringComponent> findSpringComponentsByAnnotation(String repositoryId, String annotationFlag) {
+        String sql = "SELECT id, repository_id, class_id, file_index_id, component_name, component_type, class_name, package_name, source_file, " +
+                "is_component, is_service, is_repository, is_controller, is_rest_controller, is_configuration, is_bean, " +
+                "is_configuration_properties, is_property_source, is_import, has_autowired, has_inject, has_resource, " +
+                "has_constructor_injection, has_setter_injection, is_controller_advice, is_rest_controller_advice, " +
+                "has_cross_origin, has_response_body, has_transactional, transaction_propagation, transaction_isolation, " +
+                "has_enable_scheduling, has_scheduled, has_enable_async, has_async, has_enable_caching, has_cacheable, " +
+                "has_cache_put, has_cache_evict, has_enable_web_security, has_enable_method_security, has_pre_authorize, " +
+                "has_post_authorize, has_roles_allowed, has_secured, has_event_listener, has_kafka_listener, has_rabbit_listener, " +
+                "has_jms_listener, bean_name, detected_at FROM spring_component WHERE repository_id = ? AND " + annotationFlag + " = 1 ORDER BY id";
+        return jdbcTemplate.query(sql, springComponentRowMapper, repositoryId);
+    }
+
+    /**
+     * Get component type counts for a repository.
+     */
+    public java.util.Map<String, Integer> getSpringComponentTypeCounts(String repositoryId) {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        
+        String[] typeColumns = {"is_service", "is_repository", "is_controller", "is_rest_controller", 
+                                "is_component", "is_configuration"};
+        
+        for (String col : typeColumns) {
+            String sql = "SELECT COUNT(*) FROM spring_component WHERE repository_id = ? AND " + col + " = 1";
+            Long count = jdbcTemplate.queryForObject(sql, Long.class, repositoryId);
+            if (count != null && count > 0) {
+                switch (col) {
+                    case "is_service": counts.put("SERVICE", count.intValue()); break;
+                    case "is_repository": counts.put("REPOSITORY", count.intValue()); break;
+                    case "is_controller": counts.put("CONTROLLER", count.intValue()); break;
+                    case "is_rest_controller": counts.put("REST_CONTROLLER", count.intValue()); break;
+                    case "is_component": counts.put("COMPONENT", count.intValue()); break;
+                    case "is_configuration": counts.put("CONFIGURATION", count.intValue()); break;
+                }
+            }
+        }
+        
+        return counts;
+    }
+
+    /**
+     * Get annotation flag counts for a repository.
+     */
+    public java.util.Map<String, Integer> getSpringAnnotationCounts(String repositoryId) {
+        java.util.Map<String, Integer> counts = new java.util.HashMap<>();
+        
+        String[] annotationColumns = {"has_autowired", "has_inject", "has_resource", "has_transactional", 
+                "has_scheduled", "has_async", "has_cacheable", "has_pre_authorize", "has_event_listener"};
+        
+        for (String col : annotationColumns) {
+            String sql = "SELECT COUNT(*) FROM spring_component WHERE repository_id = ? AND " + col + " = 1";
+            Long count = jdbcTemplate.queryForObject(sql, Long.class, repositoryId);
+            if (count != null && count > 0) {
+                switch (col) {
+                    case "has_autowired": counts.put("AUTOWIRED", count.intValue()); break;
+                    case "has_inject": counts.put("INJECT", count.intValue()); break;
+                    case "has_resource": counts.put("RESOURCE", count.intValue()); break;
+                    case "has_transactional": counts.put("TRANSACTIONAL", count.intValue()); break;
+                    case "has_scheduled": counts.put("SCHEDULED", count.intValue()); break;
+                    case "has_async": counts.put("ASYNC", count.intValue()); break;
+                    case "has_cacheable": counts.put("CACHEABLE", count.intValue()); break;
+                    case "has_pre_authorize": counts.put("PRE_AUTHORIZE", count.intValue()); break;
+                    case "has_event_listener": counts.put("EVENT_LISTENER", count.intValue()); break;
+                }
+            }
+        }
+        
+        return counts;
     }
 
     // ==================== Query Methods for REST APIs ====================
