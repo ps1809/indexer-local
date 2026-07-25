@@ -1,7 +1,7 @@
 package com.projectiq.indexerlocal.service;
 
-import com.projectiq.indexerlocal.model.*;
 import com.projectiq.indexerlocal.config.WorkspaceProperties;
+import com.projectiq.indexerlocal.model.*;
 import com.projectiq.indexerlocal.repository.IndexRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,19 +32,167 @@ public class IncrementalIndexingService {
 
     private static final Logger log = LoggerFactory.getLogger(IncrementalIndexingService.class);
 
+    private static final Set<String> JAVA_EXTENSIONS = Set.of(".java");
+    private static final Set<String> BUILD_EXTENSIONS = Set.of(".xml", ".gradle", ".kts", ".properties");
+    private static final Set<String> CONFIG_EXTENSIONS = Set.of(".properties", ".yml", ".yaml", ".json", ".xml", ".conf", ".cfg", ".ini");
+    private static final Set<String> DOC_EXTENSIONS = Set.of(".md", ".adoc", ".rst", ".txt", ".html");
+
     private final JdbcTemplate jdbcTemplate;
     private final IndexRepository indexRepository;
     private final JavaCodeIndexer javaCodeIndexer;
+    private final IndexerService indexerService;
     private final WorkspaceProperties workspaceProperties;
 
     public IncrementalIndexingService(JdbcTemplate jdbcTemplate,
                                       IndexRepository indexRepository,
                                       JavaCodeIndexer javaCodeIndexer,
+                                      IndexerService indexerService,
                                       WorkspaceProperties workspaceProperties) {
         this.jdbcTemplate = jdbcTemplate;
         this.indexRepository = indexRepository;
         this.javaCodeIndexer = javaCodeIndexer;
+        this.indexerService = indexerService;
         this.workspaceProperties = workspaceProperties;
+    }
+
+    // ==================== Single File Operations (used by Incremental Parser) ====================
+
+    /**
+     * Index a single file for the given repository.
+     * Only that file's data is replaced in the index.
+     *
+     * @param repositoryId the repository identifier
+     * @param filePath     the absolute path to the file to index
+     */
+    public void indexSingleFile(String repositoryId, String filePath) {
+        log.info("[INCREMENTAL-PARSER] Indexing single file: {} for repository: {}", filePath, repositoryId);
+
+        Path path = Paths.get(filePath);
+        if (!Files.exists(path) || !Files.isRegularFile(path)) {
+            log.warn("[INCREMENTAL-PARSER] File does not exist or is not a regular file: {}", filePath);
+            return;
+        }
+
+        String fileName = path.getFileName().toString();
+        String fileType = determineFileType(fileName);
+        String relativePath = computeRelativePath(filePath);
+
+        try {
+            switch (fileType) {
+                case "JAVA":
+                    indexSingleJavaFile(repositoryId, filePath, fileName, relativePath);
+                    break;
+                case "BUILD":
+                    indexSingleBuildFile(repositoryId, filePath, fileName, relativePath);
+                    break;
+                case "CONFIG":
+                    indexSingleConfigFile(repositoryId, filePath, fileName, relativePath);
+                    break;
+                case "DOCUMENTATION":
+                case "OTHER":
+                default:
+                    // For non-indexable files, just track them
+                    trackFile(repositoryId, filePath, relativePath, fileName);
+                    log.debug("[INCREMENTAL-PARSER] Tracked non-Java file: {}", filePath);
+                    break;
+            }
+
+            // Update file tracking after indexing
+            updateFileTracking(repositoryId, filePath, relativePath, fileName);
+
+            log.info("[INCREMENTAL-PARSER] Successfully indexed file: {}", filePath);
+        } catch (Exception e) {
+            log.error("[INCREMENTAL-PARSER] Failed to index file {}: {}", filePath, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Remove a file and all its associated index entries from the database.
+     *
+     * @param repositoryId the repository identifier
+     * @param filePath     the absolute path to the file to remove
+     */
+    public void removeFileFromIndex(String repositoryId, String filePath) {
+        log.info("[INCREMENTAL-PARSER] Removing file from index: {} for repository: {}", filePath, repositoryId);
+
+        try {
+            // Delete from file_index and all dependent tables
+            indexRepository.deleteFileIndexByFilePath(filePath);
+
+            // Remove file tracking entry
+            jdbcTemplate.update("DELETE FROM file_tracking WHERE repository_id = ? AND file_path = ?",
+                    repositoryId, filePath);
+
+            log.info("[INCREMENTAL-PARSER] Removed file from index: {}", filePath);
+        } catch (Exception e) {
+            log.error("[INCREMENTAL-PARSER] Failed to remove file {} from index: {}", filePath, e.getMessage());
+        }
+    }
+
+    // ==================== Single File Type Indexers ====================
+
+    private void indexSingleJavaFile(String repositoryId, String filePath, String fileName, String relativePath) {
+        // First remove existing index for this file if it exists
+        indexRepository.deleteFileIndexByFilePath(filePath);
+
+        try {
+            // Parse and extract using IndexerService
+            Path path = Paths.get(filePath);
+            String content = Files.readString(path);
+            com.github.javaparser.JavaParser javaParser = new com.github.javaparser.JavaParser();
+            com.github.javaparser.ast.CompilationUnit cu = javaParser.parse(content).getResult()
+                    .orElseThrow(() -> new IOException("Failed to parse: " + filePath));
+
+            FileIndex fileIndex = new FileIndex(filePath, fileName);
+
+            // Run extractors
+            com.projectiq.indexerlocal.extractor.ClassExtractor classExtractor = new com.projectiq.indexerlocal.extractor.ClassExtractor();
+            com.projectiq.indexerlocal.extractor.ImportExtractor importExtractor = new com.projectiq.indexerlocal.extractor.ImportExtractor();
+
+            classExtractor.extract(cu, fileIndex);
+            importExtractor.extract(cu, fileIndex);
+
+            // Count fields and methods from classes
+            long totalFields = fileIndex.getClasses().stream()
+                    .mapToLong(c -> c.getFields() != null ? c.getFields().size() : 0)
+                    .sum();
+            long totalMethods = fileIndex.getClasses().stream()
+                    .mapToLong(c -> c.getMethods() != null ? c.getMethods().size() : 0)
+                    .sum();
+            long totalAnnotations = fileIndex.getClasses().stream()
+                    .mapToLong(c -> c.getAnnotations() != null ? c.getAnnotations().size() : 0)
+                    .sum();
+
+            fileIndex.setFieldCount(totalFields);
+            fileIndex.setMethodCount(totalMethods);
+            fileIndex.setAnnotationCount(totalAnnotations);
+
+            // Save to database using IndexRepository's saveIndexResult
+            IndexResult indexResult = new IndexResult(repositoryId, List.of(fileIndex));
+            indexRepository.saveIndexResult(indexResult);
+
+            log.debug("[INCREMENTAL-PARSER] Indexed Java file: {}", filePath);
+
+            log.info("[INCREMENTAL-PARSER] Successfully indexed Java file: {}", filePath);
+        } catch (IOException e) {
+            log.error("[INCREMENTAL-PARSER] Failed to read/parse Java file {}: {}", filePath, e.getMessage());
+        } catch (Exception e) {
+            log.error("[INCREMENTAL-PARSER] Failed to index Java file {}: {}", filePath, e.getMessage(), e);
+        }
+    }
+
+    private void indexSingleBuildFile(String repositoryId, String filePath, String fileName, String relativePath) {
+        log.debug("[INCREMENTAL-PARSER] Build file change detected (tracking only): {}", filePath);
+        // Build file changes are tracked but full dependency re-analysis
+        // is handled by the existing BuildSystemService on the next full scan
+        trackFile(repositoryId, filePath, relativePath, fileName);
+    }
+
+    private void indexSingleConfigFile(String repositoryId, String filePath, String fileName, String relativePath) {
+        log.debug("[INCREMENTAL-PARSER] Config file change detected (tracking only): {}", filePath);
+        // Config file changes are tracked but full config re-analysis
+        // is handled by the existing ConfigurationService on the next full scan
+        trackFile(repositoryId, filePath, relativePath, fileName);
     }
 
     // ==================== Main Incremental Indexing Entry Point ====================
@@ -115,7 +263,7 @@ public class IncrementalIndexingService {
                         deletedFiles.size(), repositoryId);
             }
 
-            // Step 7: Index new and modified files using existing JavaCodeIndexer
+            // Step 7: Index new and modified files
             if (!filesToIndex.isEmpty()) {
                 indexChangedFiles(repositoryId, workspacePath, filesToIndex);
             }
@@ -164,14 +312,12 @@ public class IncrementalIndexingService {
     // ==================== Validation ====================
 
     private void validateRepositoryForIncrementalIndexing(String repositoryId) {
-        // Check if repository exists
         Long count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM repositories WHERE id = ?", Long.class, repositoryId);
         if (count == null || count == 0) {
             throw new IllegalArgumentException("Repository not found: " + repositoryId);
         }
 
-        // Check if repository already has a full index
         List<FileIndex> existingFiles = indexRepository.findAllFilesByRepositoryId(repositoryId);
         if (existingFiles == null || existingFiles.isEmpty()) {
             throw new IllegalArgumentException(
@@ -194,9 +340,6 @@ public class IncrementalIndexingService {
 
     // ==================== File Scanning ====================
 
-    /**
-     * Scan the workspace directory for Java files and return their absolute paths.
-     */
     private Set<String> scanJavaFiles(String workspacePath, String repositoryId) throws IOException {
         Path basePath = Paths.get(workspacePath);
         if (!Files.isDirectory(basePath)) {
@@ -218,18 +361,13 @@ public class IncrementalIndexingService {
 
     // ==================== Change Detection ====================
 
-    /**
-     * Detect file changes by comparing current file system state with previous metadata.
-     */
     private Map<String, FileTrackingMetadata> detectChanges(String repositoryId,
                                                             Map<String, FileTrackingMetadata> previousMetadata,
                                                             Set<String> currentFilePaths) {
         Map<String, FileTrackingMetadata> currentMetadata = new LinkedHashMap<>();
-
-        // Files from previous state
         Set<String> previousPaths = previousMetadata.keySet();
+        Set<String> untouchedPaths = new HashSet<>(previousPaths);
 
-        // Detect added and modified files
         for (String currentPath : currentFilePaths) {
             String fileName = Paths.get(currentPath).getFileName().toString();
             File file = new File(currentPath);
@@ -237,7 +375,6 @@ public class IncrementalIndexingService {
             FileTrackingMetadata metadata = new FileTrackingMetadata(
                     repositoryId, currentPath, "", fileName);
 
-            // Get file system timestamp
             long lastModifiedMs = file.lastModified();
             LocalDateTime lastModified = LocalDateTime.ofInstant(
                     java.time.Instant.ofEpochMilli(lastModifiedMs),
@@ -245,46 +382,36 @@ public class IncrementalIndexingService {
             metadata.setLastModified(lastModified);
             metadata.setFileSize(file.length());
 
-            // Compute simple checksum for content comparison (MVP: use file size + first 1024 bytes hash)
             String currentChecksum = computeSimpleChecksum(currentPath);
             metadata.setChecksum(currentChecksum);
 
             if (previousPaths.contains(currentPath)) {
+                untouchedPaths.remove(currentPath);
                 FileTrackingMetadata previous = previousMetadata.get(currentPath);
                 
-                // Check if file was modified by comparing checksum
                 if (currentChecksum.equals(previous.getChecksum())) {
                     metadata.setIndexStatus("UNCHANGED");
                     metadata.setId(previous.getId());
-                    log.debug("[INCREMENTAL-INDEX] Unchanged: {}", currentPath);
                 } else {
                     metadata.setIndexStatus("MODIFIED");
                     metadata.setId(previous.getId());
-                    log.info("[INCREMENTAL-INDEX] Modified: {}", currentPath);
-                    
-                    // Update stats counter for modified files
-                    // We increment in a separate step after all detection
                 }
             } else {
                 metadata.setIndexStatus("NEW");
-                log.info("[INCREMENTAL-INDEX] Added: {}", currentPath);
             }
 
             currentMetadata.put(currentPath, metadata);
         }
 
         // Detect deleted files
-        for (String previousPath : previousPaths) {
-            if (!currentFilePaths.contains(previousPath)) {
-                FileTrackingMetadata metadata = new FileTrackingMetadata(
-                        repositoryId, previousPath, 
-                        previousMetadata.get(previousPath).getRelativePath(),
-                        previousMetadata.get(previousPath).getFileName());
-                metadata.setIndexStatus("DELETED");
-                metadata.setId(previousMetadata.get(previousPath).getId());
-                log.info("[INCREMENTAL-INDEX] Deleted: {}", previousPath);
-                currentMetadata.put(previousPath, metadata);
-            }
+        for (String previousPath : untouchedPaths) {
+            FileTrackingMetadata metadata = new FileTrackingMetadata(
+                    repositoryId, previousPath, 
+                    previousMetadata.get(previousPath).getRelativePath(),
+                    previousMetadata.get(previousPath).getFileName());
+            metadata.setIndexStatus("DELETED");
+            metadata.setId(previousMetadata.get(previousPath).getId());
+            currentMetadata.put(previousPath, metadata);
         }
 
         return currentMetadata;
@@ -292,11 +419,6 @@ public class IncrementalIndexingService {
 
     // ==================== Helper Methods ====================
 
-    private static final Set<String> JAVA_EXTENSIONS = Set.of(".java");
-
-    /**
-     * Compute relative path from workspace base.
-     */
     private String computeRelativePath(String absolutePath) {
         String basePath = workspaceProperties.getRootDir();
         if (absolutePath.startsWith(basePath)) {
@@ -305,16 +427,11 @@ public class IncrementalIndexingService {
         return absolutePath;
     }
 
-    /**
-     * Compute a simple checksum for a file.
-     * For MVP: uses first 1024 bytes + file length as content indicator.
-     */
     private String computeSimpleChecksum(String filePath) {
         try {
             File file = new File(filePath);
             long fileSize = file.length();
             
-            // Read first 1024 bytes for content comparison
             StringBuilder content = new StringBuilder();
             try (FileReader reader = new FileReader(file)) {
                 char[] buffer = new char[1024];
@@ -325,7 +442,6 @@ public class IncrementalIndexingService {
                 }
             }
 
-            // Simple hash: combine file length and content
             String input = fileSize + ":" + content.toString();
             return Integer.toUnsignedString(Math.abs(input.hashCode()), 16);
         } catch (IOException e) {
@@ -334,38 +450,36 @@ public class IncrementalIndexingService {
         }
     }
 
+    /**
+     * Determine file type category for a file name.
+     */
+    private String determineFileType(String fileName) {
+        if (fileName == null) return "OTHER";
+        String lower = fileName.toLowerCase();
+        if (lower.endsWith(".java")) return "JAVA";
+        for (String ext : BUILD_EXTENSIONS) {
+            if (lower.endsWith(ext) && (lower.contains("pom") || lower.contains("build") || lower.contains("gradle"))) {
+                return "BUILD";
+            }
+        }
+        for (String ext : CONFIG_EXTENSIONS) {
+            if (lower.endsWith(ext)) return "CONFIG";
+        }
+        for (String ext : DOC_EXTENSIONS) {
+            if (lower.endsWith(ext)) return "DOCUMENTATION";
+        }
+        return "OTHER";
+    }
+
     // ==================== Index Operations ====================
 
-    /**
-     * Remove deleted files from all indexed data tables.
-     */
     private void removeDeletedFilesFromIndex(String repositoryId, Set<String> deletedFiles) {
         for (String filePath : deletedFiles) {
-            // Find the file_index entry for this repository
-            List<FileIndex> files = indexRepository.findAllFilesByRepositoryId(repositoryId);
-            for (FileIndex fileIndex : files) {
-                if (fileIndex.getFilePath().equals(filePath)) {
-                    Long fileId = fileIndex.getId();
-                    
-                    // Delete associated records
-                    jdbcTemplate.update("DELETE FROM class_info WHERE file_index_id = ?", fileId);
-                    jdbcTemplate.update("DELETE FROM import_info WHERE file_index_id = ?", fileId);
-                    jdbcTemplate.update("DELETE FROM annotation_info WHERE target_id = ? AND target_type = 'CLASS'", fileId);
-                    jdbcTemplate.update("DELETE FROM method_info WHERE class_id IN (SELECT id FROM class_info WHERE file_index_id = ?)", fileId);
-                    jdbcTemplate.update("DELETE FROM field_info WHERE class_id IN (SELECT id FROM class_info WHERE file_index_id = ?)", fileId);
-                    jdbcTemplate.update("DELETE FROM file_index WHERE id = ?", fileId);
-
-                    log.debug("[INCREMENTAL-INDEX] Removed indexed data for deleted file: {}", filePath);
-                    break;
-                }
-            }
+            indexRepository.deleteFileIndexByFilePath(filePath);
+            log.debug("[INCREMENTAL-INDEX] Removed indexed data for deleted file: {}", filePath);
         }
     }
 
-    /**
-     * Index new and modified files by leveraging existing JavaCodeIndexer.
-     * For MVP: re-index by calling the full indexer on each changed file.
-     */
     private void indexChangedFiles(String repositoryId, String workspacePath, Set<String> filesToIndex) throws IOException {
         log.info("[INCREMENTAL-INDEX] Indexing {} changed files for repository: {}", 
                 filesToIndex.size(), repositoryId);
@@ -375,9 +489,9 @@ public class IncrementalIndexingService {
             log.info("[INCREMENTAL-INDEX] Processing changed file: {}", filePath);
             
             try {
-                // Use IndexerService to index the single file
-                // For MVP, we leverage the existing indexing pipeline
-                javaCodeIndexer.indexRepository(repositoryId, workspacePath);
+                // Remove existing index and re-index
+                indexRepository.deleteFileIndexByFilePath(filePath);
+                indexSingleFile(repositoryId, filePath);
                 indexedCount++;
                 log.info("[INCREMENTAL-INDEX] Successfully indexed file: {}", filePath);
             } catch (Exception e) {
@@ -391,9 +505,6 @@ public class IncrementalIndexingService {
 
     // ==================== Persistence ====================
 
-    /**
-     * Load previous file tracking metadata from the database.
-     */
     private Map<String, FileTrackingMetadata> loadPreviousFileTracking(String repositoryId) {
         Map<String, FileTrackingMetadata> metadataMap = new LinkedHashMap<>();
         
@@ -433,22 +544,16 @@ public class IncrementalIndexingService {
         return metadataMap;
     }
 
-    /**
-     * Save current file tracking metadata to the database.
-     */
     private void saveFileTrackingMetadata(String repositoryId, Map<String, FileTrackingMetadata> metadataMap) {
         try {
-            // Delete previous tracking data for this repository
             jdbcTemplate.update("DELETE FROM file_tracking WHERE repository_id = ?", repositoryId);
 
-            // Insert updated tracking data
             String sql = "INSERT INTO file_tracking (repository_id, file_path, relative_path, file_name, last_modified_ms, file_size, checksum, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             
             for (Map.Entry<String, FileTrackingMetadata> entry : metadataMap.entrySet()) {
                 String filePath = entry.getKey();
                 FileTrackingMetadata metadata = entry.getValue();
                 
-                // Skip deleted files from being persisted (they should be removed)
                 if ("DELETED".equals(metadata.getIndexStatus())) {
                     continue;
                 }
@@ -477,12 +582,30 @@ public class IncrementalIndexingService {
         }
     }
 
-    /**
-     * Update the last incremental indexing timestamp for a repository.
-     */
+    private void updateFileTracking(String repositoryId, String filePath, String relativePath, String fileName) {
+        try {
+            File file = new File(filePath);
+            long lastModifiedMs = file.lastModified();
+            String checksum = computeSimpleChecksum(filePath);
+
+            // Remove old tracking entry and insert new one
+            jdbcTemplate.update("DELETE FROM file_tracking WHERE repository_id = ? AND file_path = ?",
+                    repositoryId, filePath);
+            jdbcTemplate.update(
+                    "INSERT INTO file_tracking (repository_id, file_path, relative_path, file_name, last_modified_ms, file_size, checksum, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    repositoryId, filePath, relativePath, fileName, lastModifiedMs, file.length(), checksum,
+                    Timestamp.valueOf(LocalDateTime.now()));
+        } catch (Exception e) {
+            log.warn("[INCREMENTAL-INDEX] Failed to update file tracking for {}: {}", filePath, e.getMessage());
+        }
+    }
+
+    private void trackFile(String repositoryId, String filePath, String relativePath, String fileName) {
+        updateFileTracking(repositoryId, filePath, relativePath, fileName);
+    }
+
     private void updateLastIncrementalIndexingTimestamp(String repositoryId, LocalDateTime timestamp) {
         try {
-            // Check if record exists
             Long count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM indexing_stats WHERE repository_id = ?", Long.class, repositoryId);
 
@@ -505,9 +628,6 @@ public class IncrementalIndexingService {
         }
     }
 
-    /**
-     * Construct JSON string of statistics for storage.
-     */
     private String constructStatsJson(String repositoryId) {
         try {
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
@@ -528,7 +648,6 @@ public class IncrementalIndexingService {
         Map<String, Object> result = new HashMap<>();
         
         try {
-            // Check if repository exists
             Long count = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM repositories WHERE id = ?", Long.class, repositoryId);
             if (count == null || count == 0) {
@@ -536,7 +655,6 @@ public class IncrementalIndexingService {
                 return result;
             }
 
-            // Get last incremental indexing stats
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(
                     "SELECT last_incremental_index_at, incremental_stats_json FROM indexing_stats WHERE repository_id = ?",
                     repositoryId);
@@ -554,7 +672,6 @@ public class IncrementalIndexingService {
                 
                 String statsJson = (String) statsEntry.get("incremental_stats_json");
                 if (statsJson != null && !statsJson.isEmpty()) {
-                    // Parse JSON (for MVP, store as simple string)
                     result.put("statistics", parseStatsJson(statsJson));
                 }
             } else {
@@ -572,7 +689,6 @@ public class IncrementalIndexingService {
     }
 
     private Map<String, Object> parseStatsJson(String json) {
-        // For MVP, return a simple representation
         Map<String, Object> stats = new HashMap<>();
         if (json != null && !json.equals("{}")) {
             try {

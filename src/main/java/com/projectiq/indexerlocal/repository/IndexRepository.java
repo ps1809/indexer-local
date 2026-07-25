@@ -583,6 +583,60 @@ public class IndexRepository {
     }
 
     /**
+     * Delete all index data for a specific file by its file path within a repository.
+     * Removes file_index, class_info, method_info, field_info, annotation_info, import_info
+     * and spring_component records associated with this file.
+     *
+     * @param filePath the absolute file path to delete from the index
+     */
+    public void deleteFileIndexByFilePath(String filePath) {
+        initSchema();
+
+        // Find the file index entry
+        List<FileIndex> files = jdbcTemplate.query(
+            "SELECT id, file_path, file_name, class_count, method_count, field_count, annotation_count FROM file_index WHERE file_path = ?",
+            fileRowMapper, filePath);
+
+        for (FileIndex file : files) {
+            Long fileId = file.getId();
+
+            // Delete imports
+            jdbcTemplate.update("DELETE FROM import_info WHERE file_index_id = ?", fileId);
+
+            // Delete methods for classes in this file
+            jdbcTemplate.update("DELETE FROM method_info WHERE class_id IN (SELECT id FROM class_info WHERE file_index_id = ?)", fileId);
+
+            // Delete fields for classes in this file
+            jdbcTemplate.update("DELETE FROM field_info WHERE class_id IN (SELECT id FROM class_info WHERE file_index_id = ?)", fileId);
+
+            // Delete annotations for classes in this file
+            jdbcTemplate.update("DELETE FROM annotation_info WHERE target_type = 'CLASS' AND target_id IN (SELECT id FROM class_info WHERE file_index_id = ?)", fileId);
+
+            // Delete classes
+            jdbcTemplate.update("DELETE FROM class_info WHERE file_index_id = ?", fileId);
+
+            // Delete spring components referencing this file
+            jdbcTemplate.update("DELETE FROM spring_component WHERE source_file = ?", filePath);
+
+            // Delete the file index entry itself
+            jdbcTemplate.update("DELETE FROM file_index WHERE id = ?", fileId);
+        }
+    }
+
+    /**
+     * Find a file index by its file path within a repository.
+     * Matches by exact file path.
+     *
+     * @param filePath the file path to find
+     * @return the FileIndex if found, null otherwise
+     */
+    public FileIndex findFileIndexByFilePath(String filePath) {
+        String sql = "SELECT id, file_path, file_name, class_count, method_count, field_count, annotation_count FROM file_index WHERE file_path = ? LIMIT 1";
+        List<FileIndex> results = jdbcTemplate.query(sql, fileRowMapper, filePath);
+        return results.isEmpty() ? null : results.get(0);
+    }
+
+    /**
      * Save a list of Spring components for a repository (deletes old ones first).
      */
     public void saveSpringComponents(String repositoryId, List<SpringComponent> components) {
