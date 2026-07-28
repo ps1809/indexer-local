@@ -1,5 +1,6 @@
 package com.projectiq.indexerlocal.service;
 
+import com.projectiq.indexerlocal.exception.NoJavaFilesException;
 import com.projectiq.indexerlocal.model.*;
 import com.projectiq.indexerlocal.repository.IndexRepository;
 import lombok.RequiredArgsConstructor;
@@ -48,9 +49,26 @@ public class JavaCodeIndexer {
         result.setIndexedAt(LocalDateTime.now());
 
         try {
+            // Validate workspace exists and is accessible
+            Path rootPath = Paths.get(workspacePath);
+            if (!Files.exists(rootPath)) {
+                log.error("Indexing failed for repository {}: workspace path does not exist: {}", repositoryId, workspacePath);
+                throw new NoJavaFilesException(repositoryId, workspacePath);
+            }
+            if (!Files.isDirectory(rootPath)) {
+                log.error("Indexing failed for repository {}: workspace path is not a directory: {}", repositoryId, workspacePath);
+                throw new NoJavaFilesException(repositoryId, workspacePath);
+            }
+
             // Find all Java files
             List<Path> javaFiles = findJavaFiles(workspacePath);
             log.info("Found {} Java files to index", javaFiles.size());
+
+            // Check if any Java files were found
+            if (javaFiles.isEmpty()) {
+                log.error("Indexing failed for repository {}: repository workspace contains no Java source files at path: {}", repositoryId, workspacePath);
+                throw new NoJavaFilesException(repositoryId, workspacePath);
+            }
 
             // Index each file
             List<FileIndex> indexedFiles = new ArrayList<>();

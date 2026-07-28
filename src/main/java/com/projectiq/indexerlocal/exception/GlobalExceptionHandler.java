@@ -179,6 +179,32 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(response);
     }
 
+    // ==================== No Java Files Error ====================
+
+    /**
+     * Handles NoJavaFilesException when a repository workspace contains no Java source files.
+     * Returns a BAD_REQUEST status with a meaningful error message.
+     */
+    @ExceptionHandler(NoJavaFilesException.class)
+    public ResponseEntity<ApiResponse<Object>> handleNoJavaFiles(
+            NoJavaFilesException ex) {
+        
+        log.error("Indexing failed for repository {}: Repository workspace contains no Java source files. Path: {}",
+                ex.getRepositoryId(), ex.getWorkspacePath());
+
+        ApiResponse<Object> response = new ApiResponse<>(
+            HttpStatus.BAD_REQUEST.value(),
+            "Bad Request",
+            new ApiResponse.ErrorDetail(
+                HttpStatus.BAD_REQUEST.value(),
+                "NoJavaFiles",
+                ex.getMessage() != null ? ex.getMessage() : "Repository workspace contains no Java source files."
+            )
+        );
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+    }
+
     // ==================== Resource Not Found Errors ====================
 
     /**
