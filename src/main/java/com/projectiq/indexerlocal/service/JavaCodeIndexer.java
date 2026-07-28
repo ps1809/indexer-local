@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 public class JavaCodeIndexer {
 
     private static final long SLOW_STEP_THRESHOLD_MS = 5000;
+    private static final long SLOW_OP_THRESHOLD_MS = 2000;
 
     private final IndexRepository indexRepository;
 
@@ -389,11 +390,16 @@ public class JavaCodeIndexer {
      * Extract class/interface/enum/record definitions from source code.
      */
     private List<ClassInfo> extractClasses(String content, String filePath, String fileName) {
+        log.info("========================================");
         log.info("Entering extractClasses");
         log.info("File: {}", filePath);
+        log.info("========================================");
+        long extractClassesStart = System.currentTimeMillis();
         
         List<ClassInfo> classes = new ArrayList<>();
         
+        log.info("Compiling class declaration pattern...");
+        long patternStart = System.currentTimeMillis();
         // Pattern to match class/interface/enum/record declarations
         Pattern pattern = Pattern.compile(
             "((?:public|private|protected)?\\s*(?:abstract)?\\s*(?:final)?\\s*)?" +
@@ -403,19 +409,56 @@ public class JavaCodeIndexer {
             "\\s*\\{",
             Pattern.MULTILINE | Pattern.DOTALL
         );
-
+        long patternDuration = System.currentTimeMillis() - patternStart;
+        log.info("Pattern compiled in {} ms", patternDuration);
+        
+        if (patternDuration > SLOW_OP_THRESHOLD_MS) {
+            log.warn("WARNING: Slow operation: Pattern.compile");
+            log.warn("Current class: N/A (before class detection)");
+            log.warn("Current file: {}", filePath);
+        }
+        
+        log.info("Applying pattern matcher to content (length: {})...", content.length());
+        long matcherStart = System.currentTimeMillis();
         Matcher matcher = pattern.matcher(content);
+        long matcherDuration = System.currentTimeMillis() - matcherStart;
+        log.info("Matcher created in {} ms", matcherDuration);
+        
+        if (matcherDuration > SLOW_OP_THRESHOLD_MS) {
+            log.warn("WARNING: Slow operation: pattern.matcher(content)");
+            log.warn("Current class: N/A (before class detection)");
+            log.warn("Current file: {}", filePath);
+        }
+        
+        int classCount = 0;
+        log.info("Entering while(matcher.find()) loop");
+        long loopStart = System.currentTimeMillis();
         
         while (matcher.find()) {
+            classCount++;
+            log.info("--- Processing class #{} ---", classCount);
+            long classStart = System.currentTimeMillis();
+            
             try {
                 ClassInfo classInfo = new ClassInfo();
                 
+                log.info("Step 1: Extracting modifiers...");
+                long stepStart = System.currentTimeMillis();
                 // Get modifiers
                 String modifiers = matcher.group(1) != null ? matcher.group(1).trim() : "";
                 String visibility = extractVisibility(modifiers);
                 boolean isAbstract = modifiers.contains("abstract");
                 boolean isFinal = modifiers.contains("final");
+                long stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("Modifiers extracted in {} ms", stepDuration);
+                if (stepDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extracting modifiers");
+                    log.warn("Current class: (not yet determined)");
+                    log.warn("Current file: {}", filePath);
+                }
                 
+                log.info("Step 2: Extracting class name...");
+                stepStart = System.currentTimeMillis();
                 String className = matcher.group(3).split("[<>\\[]")[0].trim();
                 classInfo.setFileName(fileName);
                 classInfo.setFilePath(filePath);
@@ -424,24 +467,62 @@ public class JavaCodeIndexer {
                 classInfo.setVisibility(visibility);
                 classInfo.setAbstract(isAbstract);
                 classInfo.setFinal(isFinal);
+                stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("Class name extracted in {} ms: {}", stepDuration, className);
+                if (stepDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extracting class name");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
                 
                 log.info("Found class: {} (type: {}, visibility: {})", className, matcher.group(2), visibility);
                 
+                log.info("Step 3: Extracting superclass...");
+                stepStart = System.currentTimeMillis();
                 // Extract superclass
                 String extendsClause = matcher.group(4);
                 if (extendsClause != null && extendsClause.contains("extends")) {
+                    log.info("  Class has 'extends' clause: {}", extendsClause);
                     Pattern superPattern = Pattern.compile("extends\\s+([\\w.]+)");
+                    long superPatternStart = System.currentTimeMillis();
                     Matcher superMatcher = superPattern.matcher(extendsClause);
+                    long superPatternDuration = System.currentTimeMillis() - superPatternStart;
+                    log.info("  Superclass pattern match took {} ms", superPatternDuration);
+                    if (superPatternDuration > SLOW_OP_THRESHOLD_MS) {
+                        log.warn("WARNING: Slow operation: superclass pattern matching");
+                        log.warn("Current class: {}", className);
+                        log.warn("Current file: {}", filePath);
+                    }
                     if (superMatcher.find()) {
                         classInfo.setSuperClass(superMatcher.group(1));
                         log.info("  extends: {}", superMatcher.group(1));
                     }
+                } else {
+                    log.info("  No extends clause found");
+                }
+                stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("Superclass extraction completed in {} ms", stepDuration);
+                if (stepDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extracting superclass");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
                 }
                 
+                log.info("Step 4: Extracting interfaces...");
+                stepStart = System.currentTimeMillis();
                 // Extract implemented interfaces
                 if (extendsClause != null && extendsClause.contains("implements")) {
+                    log.info("  Class has 'implements' clause: {}", extendsClause);
                     Pattern implPattern = Pattern.compile("implements\\s+([\\w.,\\s<>\\[\\]]+)");
+                    long implPatternStart = System.currentTimeMillis();
                     Matcher implMatcher = implPattern.matcher(extendsClause);
+                    long implPatternDuration = System.currentTimeMillis() - implPatternStart;
+                    log.info("  Implements pattern match took {} ms", implPatternDuration);
+                    if (implPatternDuration > SLOW_OP_THRESHOLD_MS) {
+                        log.warn("WARNING: Slow operation: implements pattern matching");
+                        log.warn("Current class: {}", className);
+                        log.warn("Current file: {}", filePath);
+                    }
                     if (implMatcher.find()) {
                         String interfacesStr = implMatcher.group(1);
                         List<String> interfaces = Arrays.stream(interfacesStr.split(","))
@@ -451,45 +532,122 @@ public class JavaCodeIndexer {
                         classInfo.setInterfaces(interfaces);
                         log.info("  implements: {}", interfaces);
                     }
+                } else {
+                    log.info("  No implements clause found");
+                }
+                stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("Interfaces extraction completed in {} ms", stepDuration);
+                if (stepDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extracting interfaces");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
                 }
 
+                log.info("Step 5: Extracting type annotations...");
+                stepStart = System.currentTimeMillis();
                 // Extract annotation for this type
                 String typeAnnotations = extractTypeAnnotations(content, matcher.start());
+                long parseAnnotationsStart = System.currentTimeMillis();
                 classInfo.setAnnotations(parseAnnotations(typeAnnotations));
+                long parseAnnotationsDuration = System.currentTimeMillis() - parseAnnotationsStart;
+                log.info("  parseAnnotations() took {} ms", parseAnnotationsDuration);
+                if (parseAnnotationsDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: parseAnnotations");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
+                stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("Type annotations extracted in {} ms: {} annotations found", stepDuration, classInfo.getAnnotations().size());
+                if (stepDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extracting type annotations");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
                 log.info("  annotations: {}", classInfo.getAnnotations().size());
 
+                log.info("Step 6: Extracting class body...");
+                stepStart = System.currentTimeMillis();
                 // Extract fields
-                long fieldExtractStart = System.currentTimeMillis();
+                long extractClassBodyStart = System.currentTimeMillis();
                 String classBody = extractClassBody(content, matcher.end() - 1);
-                classInfo.setFields(extractFields(classBody));
+                long extractClassBodyDuration = System.currentTimeMillis() - extractClassBodyStart;
+                log.info("  extractClassBody() took {} ms (body length: {})", extractClassBodyDuration, classBody.length());
+                if (extractClassBodyDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extractClassBody");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
+                stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("Class body extracted in {} ms", stepDuration);
+                if (stepDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extracting class body");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
+
+                log.info("Step 7: Extracting fields from class body...");
+                stepStart = System.currentTimeMillis();
+                long fieldExtractStart = System.currentTimeMillis();
+                List<FieldInfo> extractedFields = extractFields(classBody);
                 long fieldExtractDuration = System.currentTimeMillis() - fieldExtractStart;
-                log.info("  fields extracted: {} in {} ms", classInfo.getFields().size(), fieldExtractDuration);
+                log.info("  extractFields() took {} ms", fieldExtractDuration);
+                if (fieldExtractDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extractFields");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
+                classInfo.setFields(extractedFields);
+                stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("  fields extracted: {} in {} ms", classInfo.getFields().size(), stepDuration);
                 
-                if (fieldExtractDuration > SLOW_STEP_THRESHOLD_MS) {
+                if (stepDuration > SLOW_STEP_THRESHOLD_MS) {
                     log.warn("WARNING: Step taking unusually long: extracting fields for class {}", className);
                     log.warn("Current file: {}", filePath);
                 }
                 
+                log.info("Step 8: Extracting methods from class body...");
+                stepStart = System.currentTimeMillis();
                 // Extract methods (including constructors for records)
                 long methodExtractStart = System.currentTimeMillis();
-                classInfo.setMethods(extractMethods(classBody, matcher.group(3).split("[<>\\[]")[0].trim()));
+                List<MethodInfo> extractedMethods = extractMethods(classBody, matcher.group(3).split("[<>\\[]")[0].trim());
                 long methodExtractDuration = System.currentTimeMillis() - methodExtractStart;
-                log.info("  methods extracted: {} in {} ms", classInfo.getMethods().size(), methodExtractDuration);
+                log.info("  extractMethods() took {} ms", methodExtractDuration);
+                if (methodExtractDuration > SLOW_OP_THRESHOLD_MS) {
+                    log.warn("WARNING: Slow operation: extractMethods");
+                    log.warn("Current class: {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
+                classInfo.setMethods(extractedMethods);
+                stepDuration = System.currentTimeMillis() - stepStart;
+                log.info("  methods extracted: {} in {} ms", classInfo.getMethods().size(), stepDuration);
                 
-                if (methodExtractDuration > SLOW_STEP_THRESHOLD_MS) {
+                if (stepDuration > SLOW_STEP_THRESHOLD_MS) {
                     log.warn("WARNING: Step taking unusually long: extracting methods for class {}", className);
                     log.warn("Current file: {}", filePath);
                 }
-
+                
+                log.info("Step 9: Adding class to list...");
                 classes.add(classInfo);
+                long classDuration = System.currentTimeMillis() - classStart;
+                log.info("Completed processing class #{}: {} (total time: {} ms)", classCount, className, classDuration);
+                log.info("--- End class #{} ---", classCount);
+                
             } catch (Exception e) {
                 log.warn("Error parsing class at position: {}", matcher.start());
+                log.warn("Exception message: {}", e.getMessage());
             }
         }
-
+        
+        long loopDuration = System.currentTimeMillis() - loopStart;
+        log.info("Left while(matcher.find()) loop. Total iterations: {} in {} ms", classCount, loopDuration);
+        
+        long totalDuration = System.currentTimeMillis() - extractClassesStart;
+        log.info("========================================");
         log.info("Leaving extractClasses");
         log.info("File: {}", filePath);
         log.info("Total classes found: {}", classes.size());
+        log.info("Total extractClasses duration: {} ms", totalDuration);
+        log.info("========================================");
         
         return classes;
     }
@@ -566,35 +724,68 @@ public class JavaCodeIndexer {
      * Extract class body from source code.
      */
     private String extractClassBody(String content, int startIndex) {
+        log.info("  >> Entering extractClassBody(startIndex={}, content.length={})", startIndex, content.length());
+        long extractBodyStart = System.currentTimeMillis();
+        
         int braceCount = 0;
         int i = startIndex;
         
+        log.info("  >> extractClassBody: Finding opening brace...");
+        long findBraceStart = System.currentTimeMillis();
         // Find opening brace
         while (i < content.length() && content.charAt(i) != '{') {
             i++;
         }
+        long findBraceDuration = System.currentTimeMillis() - findBraceStart;
+        log.info("  >> extractClassBody: Opening brace found at index {} in {} ms", i, findBraceDuration);
+        if (findBraceDuration > SLOW_OP_THRESHOLD_MS) {
+            log.warn("WARNING: Slow operation: extractClassBody finding opening brace");
+            log.warn("Current file: (within extractClasses)");
+        }
         
-        if (i >= content.length()) return "";
+        if (i >= content.length()) {
+            log.info("  >> extractClassBody: No opening brace found, returning empty string");
+            log.info("  >> Leaving extractClassBody (duration: {} ms)", System.currentTimeMillis() - extractBodyStart);
+            return "";
+        }
         
         braceCount = 1;
         i++;
         int start = i;
         
+        log.info("  >> extractClassBody: Scanning for matching closing brace starting from index {}...", start);
+        long scanStart = System.currentTimeMillis();
         while (i < content.length() && braceCount > 0) {
             if (content.charAt(i) == '{') braceCount++;
             else if (content.charAt(i) == '}') braceCount--;
             i++;
         }
+        long scanDuration = System.currentTimeMillis() - scanStart;
+        log.info("  >> extractClassBody: Scanning completed in {} ms, final i={}, braceCount={}", scanDuration, i, braceCount);
+        if (scanDuration > SLOW_OP_THRESHOLD_MS) {
+            log.warn("WARNING: Slow operation: extractClassBody scanning for closing brace");
+            log.warn("Current file: (within extractClasses)");
+        }
         
-        return content.substring(start, i - 1);
+        String result = content.substring(start, i - 1);
+        long totalDuration = System.currentTimeMillis() - extractBodyStart;
+        log.info("  >> extractClassBody: Body extracted, length={}, duration={} ms", result.length(), totalDuration);
+        log.info("  >> Leaving extractClassBody");
+        
+        return result;
     }
 
     /**
      * Extract fields from class body.
      */
     private List<FieldInfo> extractFields(String classBody) {
+        log.info("  >> Entering extractFields (classBody length: {})", classBody.length());
+        long extractFieldsStart = System.currentTimeMillis();
+        
         List<FieldInfo> fields = new ArrayList<>();
         
+        log.info("  >> extractFields: Compiling field pattern...");
+        long patternStart = System.currentTimeMillis();
         // Pattern for field declarations
         Pattern pattern = Pattern.compile(
             "((?:public|private|protected)?\\s*(?:static)?\\s*(?:final)?\\s*(?:final\\s+)?" +
@@ -603,13 +794,31 @@ public class JavaCodeIndexer {
             "(?:\\s*=\\s*([^;{\\n]+))?\\s*;",
             Pattern.MULTILINE | Pattern.DOTALL
         );
+        long patternDuration = System.currentTimeMillis() - patternStart;
+        log.info("  >> extractFields: Pattern compiled in {} ms", patternDuration);
+        if (patternDuration > SLOW_OP_THRESHOLD_MS) {
+            log.warn("WARNING: Slow operation: extractFields pattern compile");
+        }
 
+        log.info("  >> extractFields: Creating matcher...");
+        long matcherStart = System.currentTimeMillis();
         Matcher matcher = pattern.matcher(classBody);
+        long matcherDuration = System.currentTimeMillis() - matcherStart;
+        log.info("  >> extractFields: Matcher created in {} ms", matcherDuration);
+        
+        int fieldCount = 0;
+        log.info("  >> extractFields: Entering while(matcher.find()) loop");
+        long loopStart = System.currentTimeMillis();
         
         while (matcher.find()) {
+            fieldCount++;
+            log.info("  >> extractFields: Processing field #{}", fieldCount);
+            long fieldStart = System.currentTimeMillis();
+            
             // Skip if it looks like a method return type
             String fullMatch = matcher.group(0);
             if (fullMatch.trim().startsWith("return") || fullMatch.trim().startsWith("throw")) {
+                log.info("  >> extractFields: Skipping field #{} (looks like return/throw)", fieldCount);
                 continue;
             }
 
@@ -631,8 +840,17 @@ public class JavaCodeIndexer {
             }
 
             fields.add(field);
+            long fieldDuration = System.currentTimeMillis() - fieldStart;
+            log.info("  >> extractFields: Field #{}: name={}, type={}, duration={} ms", fieldCount, field.getFieldName(), field.getFieldType(), fieldDuration);
         }
-
+        
+        long loopDuration = System.currentTimeMillis() - loopStart;
+        log.info("  >> extractFields: Left while(matcher.find()) loop. Total fields: {} in {} ms", fieldCount, loopDuration);
+        
+        long totalDuration = System.currentTimeMillis() - extractFieldsStart;
+        log.info("  >> extractFields: Returning {} fields, total duration: {} ms", fields.size(), totalDuration);
+        log.info("  >> Leaving extractFields");
+        
         return fields;
     }
 
@@ -640,11 +858,14 @@ public class JavaCodeIndexer {
      * Extract methods from class body.
      */
     private List<MethodInfo> extractMethods(String classBody, String className) {
-        log.info("Entering extractMethods");
-        log.info("Class: {}", className);
+        log.info("  >> Entering extractMethods (classBody length: {})", classBody.length());
+        log.info("  >> Class: {}", className);
+        long extractMethodsStart = System.currentTimeMillis();
         
         List<MethodInfo> methods = new ArrayList<>();
         
+        log.info("  >> extractMethods: Compiling method pattern...");
+        long patternStart = System.currentTimeMillis();
         // Pattern for method declarations
         Pattern pattern = Pattern.compile(
             "((?:public|private|protected)?\\s*(?:static)?\\s*(?:abstract)?\\s*(?:final)?\\s*" +
@@ -655,20 +876,43 @@ public class JavaCodeIndexer {
             "\\s*(?:\\{)",  // opening brace
             Pattern.MULTILINE | Pattern.DOTALL
         );
+        long patternDuration = System.currentTimeMillis() - patternStart;
+        log.info("  >> extractMethods: Pattern compiled in {} ms", patternDuration);
+        if (patternDuration > SLOW_OP_THRESHOLD_MS) {
+            log.warn("WARNING: Slow operation: extractMethods pattern compile");
+            log.warn("Current class: {}", className);
+        }
 
+        log.info("  >> extractMethods: Creating matcher...");
+        long matcherStart = System.currentTimeMillis();
         Matcher matcher = pattern.matcher(classBody);
+        long matcherDuration = System.currentTimeMillis() - matcherStart;
+        log.info("  >> extractMethods: Matcher created in {} ms", matcherDuration);
+        
+        int methodCount = 0;
+        int skippedCount = 0;
+        log.info("  >> extractMethods: Entering while(matcher.find()) loop");
+        long loopStart = System.currentTimeMillis();
         
         while (matcher.find()) {
+            methodCount++;
+            log.info("  >> extractMethods: Processing method candidate #{}", methodCount);
+            long methodStart = System.currentTimeMillis();
+            
             String returnTypeAndModifiers = matcher.group(1).trim();
             String methodName = matcher.group(2);
             String params = matcher.group(3) != null ? matcher.group(3).trim() : "";
             String throwsClause = matcher.group(4) != null ? matcher.group(4).trim() : "";
+
+            log.info("  >> extractMethods:   candidate: methodName={}, params={}", methodName, params.isEmpty() ? "(none)" : params);
 
             // Skip if it looks like a constructor call or control flow
             if (methodName.equals(className) || methodName.equals("new") || 
                 methodName.equals("if") || methodName.equals("while") || 
                 methodName.equals("for") || methodName.equals("switch") ||
                 methodName.equals("return")) {
+                log.info("  >> extractMethods:   SKIPPING {} (matched skip criteria)", methodName);
+                skippedCount++;
                 continue;
             }
 
@@ -693,7 +937,11 @@ public class JavaCodeIndexer {
             
             // Extract parameters
             if (!params.isEmpty()) {
+                log.info("  >> extractMethods:   Parsing parameters...");
+                long paramStart = System.currentTimeMillis();
                 List<String> paramList = parseParameters(params);
+                long paramDuration = System.currentTimeMillis() - paramStart;
+                log.info("  >> extractMethods:   Parameters parsed in {} ms: {} params", paramDuration, paramList.size());
                 method.setParameters(paramList);
             }
             
@@ -701,14 +949,22 @@ public class JavaCodeIndexer {
             if (!throwsClause.isEmpty()) {
                 List<String> exceptions = Arrays.asList(throwsClause.split(","));
                 method.setExceptions(exceptions);
+                log.info("  >> extractMethods:   throws: {}", exceptions);
             }
 
             methods.add(method);
+            long methodDuration = System.currentTimeMillis() - methodStart;
+            log.info("  >> extractMethods:   ADDED method: {}(...), returnType={}, duration={} ms", methodName, method.getReturnType(), methodDuration);
         }
-
-        log.info("Leaving extractMethods");
-        log.info("Class: {}", className);
-        log.info("Total methods found: {}", methods.size());
+        
+        long loopDuration = System.currentTimeMillis() - loopStart;
+        log.info("  >> extractMethods: Left while(matcher.find()) loop. Total candidates: {} (skipped: {}), found {} methods in {} ms", 
+                methodCount, skippedCount, methods.size(), loopDuration);
+        
+        long totalDuration = System.currentTimeMillis() - extractMethodsStart;
+        log.info("  >> Leaving extractMethods");
+        log.info("  >> Class: {}", className);
+        log.info("  >> Total methods found: {} (total duration: {} ms)", methods.size(), totalDuration);
         
         return methods;
     }
