@@ -396,6 +396,27 @@ public class RepositoryService {
     }
 
     /**
+     * Mark a repository as successfully indexed.
+     * Updates status to INDEXED, sets lastIndexingTimestamp and lastUpdatedTimestamp.
+     */
+    public void markRepositoryAsIndexed(String repositoryId) {
+        com.projectiq.indexerlocal.model.Repository repository = repositoryRepository.findByRepositoryId(repositoryId);
+        if (repository == null) {
+            throw new IllegalArgumentException("Repository with repositoryId '" + repositoryId + "' not found");
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        repository.setStatus(RepositoryStatus.INDEXED);
+        repository.setLastIndexingTimestamp(now);
+        repository.setLastUpdatedTimestamp(now);
+        repositoryRepository.update(repository);
+
+        logger.info("Repository indexing completed: id={}, repositoryId={}, status={}", repository.getId(), repositoryId, RepositoryStatus.INDEXED);
+        logger.info("Repository status updated: id={}, status={}", repository.getId(), RepositoryStatus.INDEXED);
+        logger.info("Timestamp updated: id={}, lastIndexingTimestamp={}", repository.getId(), now);
+    }
+
+    /**
      * Validate the provided path.
      */
     private void validatePath(String path) {

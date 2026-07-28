@@ -7,6 +7,7 @@ import com.projectiq.indexerlocal.service.IndexerService;
 import com.projectiq.indexerlocal.service.IncrementalIndexingService;
 import com.projectiq.indexerlocal.service.JavaCodeIndexer;
 import com.projectiq.indexerlocal.service.JavaCodeIndexer.JavaIndexResult;
+import com.projectiq.indexerlocal.service.RepositoryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -41,13 +42,16 @@ public class IndexControllerV1 {
     private final IndexerService indexerService;
     private final JavaCodeIndexer javaCodeIndexer;
     private final IncrementalIndexingService incrementalIndexingService;
+    private final RepositoryService repositoryService;
 
     public IndexControllerV1(IndexerService indexerService, 
                              JavaCodeIndexer javaCodeIndexer,
-                             IncrementalIndexingService incrementalIndexingService) {
+                             IncrementalIndexingService incrementalIndexingService,
+                             RepositoryService repositoryService) {
         this.indexerService = indexerService;
         this.javaCodeIndexer = javaCodeIndexer;
         this.incrementalIndexingService = incrementalIndexingService;
+        this.repositoryService = repositoryService;
     }
 
     // ==================== File Indexing Operations ====================
@@ -565,9 +569,14 @@ public class IndexControllerV1 {
         JavaIndexResult result = javaCodeIndexer.indexRepository(repositoryId, workspacePath);
         
         if (result.getError() != null) {
+            log.error("Indexing failed for repository {}: {}", repositoryId, result.getError());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResponse.<JavaIndexResult>internalError("Indexing failed: " + result.getError()));
         }
+        
+        // Mark repository as indexed on successful completion
+        log.info("Repository indexing completed for repository: {}", repositoryId);
+        repositoryService.markRepositoryAsIndexed(repositoryId);
         
         return ResponseEntity.ok(ApiResponse.success("Java source index built successfully", result));
     }

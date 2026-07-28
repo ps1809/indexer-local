@@ -34,6 +34,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class JavaCodeIndexer {
 
+    private static final long SLOW_STEP_THRESHOLD_MS = 5000;
+
     private final IndexRepository indexRepository;
 
     /**
@@ -41,7 +43,10 @@ public class JavaCodeIndexer {
      */
     @Transactional
     public JavaIndexResult indexRepository(String repositoryId, String workspacePath) {
+        log.info("================================================");
         log.info("Starting Java code indexing for repository: {}", repositoryId);
+        log.info("Workspace path: {}", workspacePath);
+        log.info("================================================");
         long startTime = System.currentTimeMillis();
 
         JavaIndexResult result = new JavaIndexResult();
@@ -50,6 +55,10 @@ public class JavaCodeIndexer {
 
         try {
             // Validate workspace exists and is accessible
+            log.info("Starting indexing");
+            log.info("Validating workspace path: {}", workspacePath);
+            long validationStart = System.currentTimeMillis();
+            
             Path rootPath = Paths.get(workspacePath);
             if (!Files.exists(rootPath)) {
                 log.error("Indexing failed for repository {}: workspace path does not exist: {}", repositoryId, workspacePath);
@@ -59,10 +68,22 @@ public class JavaCodeIndexer {
                 log.error("Indexing failed for repository {}: workspace path is not a directory: {}", repositoryId, workspacePath);
                 throw new NoJavaFilesException(repositoryId, workspacePath);
             }
+            
+            long validationDuration = System.currentTimeMillis() - validationStart;
+            log.info("Workspace validation completed in {} ms", validationDuration);
 
             // Find all Java files
+            log.info("Scanning workspace at: {}", workspacePath);
+            long scanStart = System.currentTimeMillis();
             List<Path> javaFiles = findJavaFiles(workspacePath);
-            log.info("Found {} Java files to index", javaFiles.size());
+            long scanDuration = System.currentTimeMillis() - scanStart;
+            log.info("Found {} Java files to index (scan took {} ms)", javaFiles.size(), scanDuration);
+
+            if (scanDuration > SLOW_STEP_THRESHOLD_MS) {
+                log.warn("WARNING: Step taking unusually long: scanning workspace");
+                log.warn("Current stage: findJavaFiles");
+                log.warn("Path: {}", workspacePath);
+            }
 
             // Check if any Java files were found
             if (javaFiles.isEmpty()) {
@@ -74,27 +95,60 @@ public class JavaCodeIndexer {
             List<FileIndex> indexedFiles = new ArrayList<>();
             List<String> parsingErrors = new ArrayList<>();
             
-            for (Path javaFile : javaFiles) {
+            for (int fileNum = 0; fileNum < javaFiles.size(); fileNum++) {
+                Path javaFile = javaFiles.get(fileNum);
+                log.info("------------------------------------------------");
+                log.info("Processing file [{}/{}]: {}", fileNum + 1, javaFiles.size(), javaFile.toAbsolutePath());
+                long fileStartTime = System.currentTimeMillis();
+
                 try {
+                    log.info("Entering indexJavaFile");
+                    log.info("File: {}", javaFile.toAbsolutePath());
+                    
                     FileIndex fileIndex = indexJavaFile(repositoryId, javaFile);
+                    
+                    log.info("Leaving indexJavaFile");
+                    log.info("File: {}", javaFile.toAbsolutePath());
+                    
                     indexedFiles.add(fileIndex);
+                    
+                    long fileDuration = System.currentTimeMillis() - fileStartTime;
+                    log.info("Finished processing file: {}", javaFile.toAbsolutePath());
+                    log.info("File processing took {} ms", fileDuration);
+                    
+                    if (fileDuration > SLOW_STEP_THRESHOLD_MS) {
+                        log.warn("WARNING: Step taking unusually long: processing entire file");
+                        log.warn("Current file: {}", javaFile.toAbsolutePath());
+                        log.warn("Duration: {} ms", fileDuration);
+                    }
+                    
                     log.debug("Indexed: {}", javaFile.getFileName());
                 } catch (Exception e) {
                     String errorMsg = "Failed to index " + javaFile.getFileName() + ": " + e.getMessage();
                     parsingErrors.add(errorMsg);
                     log.error("Error indexing file {}: {}", javaFile.getFileName(), e.getMessage(), e);
+                    long fileDuration = System.currentTimeMillis() - fileStartTime;
+                    log.info("Finished processing file (with errors): {} ({} ms)", javaFile.toAbsolutePath(), fileDuration);
                 }
+                
+                log.info("------------------------------------------------");
             }
 
             // Calculate statistics
+            log.info("Calculating indexing statistics...");
+            long statsStart = System.currentTimeMillis();
             JavaIndexingStatistics stats = calculateStatistics(indexedFiles);
+            long statsDuration = System.currentTimeMillis() - statsStart;
+            log.info("Statistics calculation completed in {} ms", statsDuration);
             result.setStatistics(stats);
             result.setIndexedFiles(indexedFiles);
             result.setParsingErrors(parsingErrors);
 
             long duration = System.currentTimeMillis() - startTime;
+            log.info("================================================");
             log.info("Java code indexing completed in {}ms. Indexed {} files, {} errors", 
                     duration, indexedFiles.size(), parsingErrors.size());
+            log.info("================================================");
 
         } catch (Exception e) {
             log.error("Failed to index repository {}: {}", repositoryId, e.getMessage(), e);
@@ -108,6 +162,9 @@ public class JavaCodeIndexer {
      * Find all Java source files in the workspace.
      */
     private List<Path> findJavaFiles(String workspacePath) {
+        log.info("Entering findJavaFiles");
+        log.info("Workspace: {}", workspacePath);
+        
         List<Path> javaFiles = new ArrayList<>();
         Path rootPath = Paths.get(workspacePath);
 
@@ -115,18 +172,25 @@ public class JavaCodeIndexer {
             // Check if path exists and is a directory
             if (!Files.exists(rootPath) || !Files.isDirectory(rootPath)) {
                 log.warn("Workspace path does not exist or is not a directory: {}", workspacePath);
+                log.info("Leaving findJavaFiles");
+                log.info("Workspace: {}", workspacePath);
                 return javaFiles;
             }
 
             // Find all .java files recursively
+            log.info("Walking directory tree recursively...");
             javaFiles = Files.walk(rootPath)
                     .filter(Files::isRegularFile)
                     .filter(p -> p.toString().endsWith(".java"))
                     .collect(Collectors.toList());
+            
+            log.info("Found {} Java files", javaFiles.size());
         } catch (IOException e) {
             log.error("Error walking directory {}: {}", workspacePath, e.getMessage(), e);
         }
 
+        log.info("Leaving findJavaFiles");
+        log.info("Workspace: {}", workspacePath);
         return javaFiles;
     }
 
@@ -134,7 +198,19 @@ public class JavaCodeIndexer {
      * Index a single Java file.
      */
     private FileIndex indexJavaFile(String repositoryId, Path javaFile) throws IOException {
+        log.info("Entering indexJavaFile");
+        log.info("File: {}", javaFile.toAbsolutePath());
+        
+        long readStart = System.currentTimeMillis();
         String content = new String(Files.readAllBytes(javaFile));
+        long readDuration = System.currentTimeMillis() - readStart;
+        log.info("Read file content in {} ms ({} bytes)", readDuration, content.length());
+        
+        if (readDuration > SLOW_STEP_THRESHOLD_MS) {
+            log.warn("WARNING: Step taking unusually long: reading file content");
+            log.warn("Current file: {}", javaFile.toAbsolutePath());
+        }
+        
         String relativePath = javaFile.toString();
         
         FileIndex fileIndex = new FileIndex();
@@ -145,23 +221,95 @@ public class JavaCodeIndexer {
         fileIndex.setStatus("INDEXED");
 
         // Extract package
+        log.info("Parsing file...");
+        long parseStart = System.currentTimeMillis();
         String packageName = extractPackage(content);
+        long parseDuration = System.currentTimeMillis() - parseStart;
+        log.info("Parsing completed in {} ms", parseDuration);
+        
+        if (parseDuration > SLOW_STEP_THRESHOLD_MS) {
+            log.warn("WARNING: Step taking unusually long: extracting package");
+            log.warn("Current file: {}", javaFile.toAbsolutePath());
+        }
+        
+        log.info("Extracting package...");
         fileIndex.setPackageName(packageName);
+        log.info("Package extracted: {}", packageName);
 
         // Extract imports
+        log.info("Extracting imports...");
+        long importStart = System.currentTimeMillis();
         List<ImportInfo> imports = extractImports(content);
+        long importDuration = System.currentTimeMillis() - importStart;
+        log.info("Imports extracted: {} imports found in {} ms", imports.size(), importDuration);
+        
+        if (importDuration > SLOW_STEP_THRESHOLD_MS) {
+            log.warn("WARNING: Step taking unusually long: extracting imports");
+            log.warn("Current file: {}", javaFile.toAbsolutePath());
+        }
+        
         fileIndex.setImports(imports);
 
         // Extract types
+        log.info("Extracting classes...");
+        long classStart = System.currentTimeMillis();
         List<ClassInfo> classes = extractClasses(content, relativePath, javaFile.getFileName().toString());
+        long classDuration = System.currentTimeMillis() - classStart;
+        log.info("Found {} classes in {} ms", classes.size(), classDuration);
+        
+        if (classDuration > SLOW_STEP_THRESHOLD_MS) {
+            log.warn("WARNING: Step taking unusually long: extracting classes");
+            log.warn("Current file: {}", javaFile.toAbsolutePath());
+        }
+        
+        // Log each class
+        for (ClassInfo ci : classes) {
+            log.info("Processing class:");
+            log.info("    name: {}", ci.getClassName());
+            log.info("    package: {}", packageName);
+        }
+        
         fileIndex.setClasses(classes);
         fileIndex.setClassCount((long) classes.size());
+
+        // Extract fields for each class
+        log.info("Extracting fields...");
+        long fieldCount = 0;
+        for (ClassInfo ci : classes) {
+            if (ci.getFields() != null) {
+                log.info("Fields for class {}: {}", ci.getClassName(), ci.getFields().size());
+                fieldCount += ci.getFields().size();
+            }
+        }
+        log.info("Found {} total fields", fieldCount);
+
+        // Extract constructors for each class
+        log.info("Extracting constructors...");
+        long constructorCount = 0;
+        for (ClassInfo ci : classes) {
+            if (ci.getConstructors() != null) {
+                log.info("Constructors for class {}: {}", ci.getClassName(), ci.getConstructors().size());
+                constructorCount += ci.getConstructors().size();
+            }
+        }
+        log.info("Found {} total constructors", constructorCount);
+
+        // Extract methods for each class
+        log.info("Extracting methods...");
+        long methodCountForLog = 0;
+        for (ClassInfo ci : classes) {
+            if (ci.getMethods() != null) {
+                log.info("Methods for class {}: {}", ci.getClassName(), ci.getMethods().size());
+                methodCountForLog += ci.getMethods().size();
+            }
+        }
+        log.info("Found {} total methods", methodCountForLog);
 
         // Calculate counts
         long methodCount = classes.stream()
                 .flatMap(c -> c.getMethods().stream())
                 .count();
-        long fieldCount = classes.stream()
+        long fieldCountTotal = classes.stream()
                 .flatMap(c -> c.getFields().stream())
                 .count();
         long annotationCount = classes.stream()
@@ -169,9 +317,12 @@ public class JavaCodeIndexer {
                 .count();
         
         fileIndex.setMethodCount(methodCount);
-        fileIndex.setFieldCount(fieldCount);
+        fileIndex.setFieldCount(fieldCountTotal);
         fileIndex.setAnnotationCount(annotationCount);
 
+        log.info("Leaving indexJavaFile");
+        log.info("File: {}", javaFile.toAbsolutePath());
+        
         return fileIndex;
     }
 
@@ -238,6 +389,9 @@ public class JavaCodeIndexer {
      * Extract class/interface/enum/record definitions from source code.
      */
     private List<ClassInfo> extractClasses(String content, String filePath, String fileName) {
+        log.info("Entering extractClasses");
+        log.info("File: {}", filePath);
+        
         List<ClassInfo> classes = new ArrayList<>();
         
         // Pattern to match class/interface/enum/record declarations
@@ -262,13 +416,16 @@ public class JavaCodeIndexer {
                 boolean isAbstract = modifiers.contains("abstract");
                 boolean isFinal = modifiers.contains("final");
                 
+                String className = matcher.group(3).split("[<>\\[]")[0].trim();
                 classInfo.setFileName(fileName);
                 classInfo.setFilePath(filePath);
-                classInfo.setClassName(matcher.group(3).split("[<>\\[]")[0].trim());
+                classInfo.setClassName(className);
                 classInfo.setClassType(matcher.group(2).toUpperCase());
                 classInfo.setVisibility(visibility);
                 classInfo.setAbstract(isAbstract);
                 classInfo.setFinal(isFinal);
+                
+                log.info("Found class: {} (type: {}, visibility: {})", className, matcher.group(2), visibility);
                 
                 // Extract superclass
                 String extendsClause = matcher.group(4);
@@ -277,6 +434,7 @@ public class JavaCodeIndexer {
                     Matcher superMatcher = superPattern.matcher(extendsClause);
                     if (superMatcher.find()) {
                         classInfo.setSuperClass(superMatcher.group(1));
+                        log.info("  extends: {}", superMatcher.group(1));
                     }
                 }
                 
@@ -291,19 +449,37 @@ public class JavaCodeIndexer {
                                 .filter(s -> !s.isEmpty())
                                 .collect(Collectors.toList());
                         classInfo.setInterfaces(interfaces);
+                        log.info("  implements: {}", interfaces);
                     }
                 }
 
                 // Extract annotation for this type
                 String typeAnnotations = extractTypeAnnotations(content, matcher.start());
                 classInfo.setAnnotations(parseAnnotations(typeAnnotations));
+                log.info("  annotations: {}", classInfo.getAnnotations().size());
 
                 // Extract fields
+                long fieldExtractStart = System.currentTimeMillis();
                 String classBody = extractClassBody(content, matcher.end() - 1);
                 classInfo.setFields(extractFields(classBody));
+                long fieldExtractDuration = System.currentTimeMillis() - fieldExtractStart;
+                log.info("  fields extracted: {} in {} ms", classInfo.getFields().size(), fieldExtractDuration);
+                
+                if (fieldExtractDuration > SLOW_STEP_THRESHOLD_MS) {
+                    log.warn("WARNING: Step taking unusually long: extracting fields for class {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
                 
                 // Extract methods (including constructors for records)
+                long methodExtractStart = System.currentTimeMillis();
                 classInfo.setMethods(extractMethods(classBody, matcher.group(3).split("[<>\\[]")[0].trim()));
+                long methodExtractDuration = System.currentTimeMillis() - methodExtractStart;
+                log.info("  methods extracted: {} in {} ms", classInfo.getMethods().size(), methodExtractDuration);
+                
+                if (methodExtractDuration > SLOW_STEP_THRESHOLD_MS) {
+                    log.warn("WARNING: Step taking unusually long: extracting methods for class {}", className);
+                    log.warn("Current file: {}", filePath);
+                }
 
                 classes.add(classInfo);
             } catch (Exception e) {
@@ -311,6 +487,10 @@ public class JavaCodeIndexer {
             }
         }
 
+        log.info("Leaving extractClasses");
+        log.info("File: {}", filePath);
+        log.info("Total classes found: {}", classes.size());
+        
         return classes;
     }
 
@@ -460,6 +640,9 @@ public class JavaCodeIndexer {
      * Extract methods from class body.
      */
     private List<MethodInfo> extractMethods(String classBody, String className) {
+        log.info("Entering extractMethods");
+        log.info("Class: {}", className);
+        
         List<MethodInfo> methods = new ArrayList<>();
         
         // Pattern for method declarations
@@ -523,6 +706,10 @@ public class JavaCodeIndexer {
             methods.add(method);
         }
 
+        log.info("Leaving extractMethods");
+        log.info("Class: {}", className);
+        log.info("Total methods found: {}", methods.size());
+        
         return methods;
     }
 

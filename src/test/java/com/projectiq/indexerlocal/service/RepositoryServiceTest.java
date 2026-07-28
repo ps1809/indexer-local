@@ -405,4 +405,69 @@ class RepositoryServiceTest {
             repositoryService.deleteRepositoryWithAllData("repo_test123");
         });
     }
+
+    @Test
+    void testMarkRepositoryAsIndexed_Success() {
+        Repository repo = new Repository();
+        repo.setId(1L);
+        repo.setRepositoryId("repo_test123");
+        repo.setRepositoryName("Test Repo");
+        repo.setStatus(RepositoryStatus.REGISTERED);
+        repo.setLastIndexingTimestamp(null);
+
+        when(repositoryRepository.findByRepositoryId("repo_test123")).thenReturn(repo);
+
+        repositoryService.markRepositoryAsIndexed("repo_test123");
+
+        assertEquals(RepositoryStatus.INDEXED, repo.getStatus());
+        assertNotNull(repo.getLastIndexingTimestamp());
+        assertNotNull(repo.getLastUpdatedTimestamp());
+        verify(repositoryRepository).update(repo);
+    }
+
+    @Test
+    void testMarkRepositoryAsIndexed_NotFound() {
+        when(repositoryRepository.findByRepositoryId("nonexistent")).thenReturn(null);
+
+        assertThrows(IllegalArgumentException.class, () -> {
+            repositoryService.markRepositoryAsIndexed("nonexistent");
+        });
+    }
+
+    @Test
+    void testMarkRepositoryAsIndexed_StatusPersistence() {
+        Repository repo = new Repository();
+        repo.setId(1L);
+        repo.setRepositoryId("repo_test123");
+        repo.setStatus(RepositoryStatus.REGISTERED);
+        repo.setLastIndexingTimestamp(null);
+
+        when(repositoryRepository.findByRepositoryId("repo_test123")).thenReturn(repo);
+
+        repositoryService.markRepositoryAsIndexed("repo_test123");
+
+        // Verify status is persisted as INDEXED
+        assertEquals(RepositoryStatus.INDEXED, repo.getStatus());
+        verify(repositoryRepository).update(repo);
+    }
+
+    @Test
+    void testMarkRepositoryAsIndexed_TimestampPersistence() {
+        Repository repo = new Repository();
+        repo.setId(1L);
+        repo.setRepositoryId("repo_test123");
+        repo.setStatus(RepositoryStatus.REGISTERED);
+        repo.setLastIndexingTimestamp(null);
+
+        when(repositoryRepository.findByRepositoryId("repo_test123")).thenReturn(repo);
+
+        repositoryService.markRepositoryAsIndexed("repo_test123");
+
+        // Verify timestamps are set
+        assertNotNull(repo.getLastIndexingTimestamp());
+        assertNotNull(repo.getLastUpdatedTimestamp());
+        assertTrue(repo.getLastIndexingTimestamp().isBefore(LocalDateTime.now().plusSeconds(1)));
+        assertTrue(repo.getLastUpdatedTimestamp().isBefore(LocalDateTime.now().plusSeconds(1)));
+        verify(repositoryRepository).update(repo);
+    }
 }
