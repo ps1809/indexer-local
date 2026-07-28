@@ -37,6 +37,15 @@ public class JavaCodeIndexer {
     private static final long SLOW_STEP_THRESHOLD_MS = 5000;
     private static final long SLOW_OP_THRESHOLD_MS = 2000;
 
+    private static final Set<String> FIELD_MODIFIERS = Set.of(
+        "public", "private", "protected", "static", "final", "volatile", "transient"
+    );
+
+    private static final Set<String> CONTROL_FLOW_KEYWORDS = Set.of(
+        "return", "throw", "if", "else", "for", "while", "switch", "case",
+        "break", "continue", "do", "try", "catch", "finally"
+    );
+
     private final IndexRepository indexRepository;
 
     /**
@@ -776,82 +785,164 @@ public class JavaCodeIndexer {
     }
 
     /**
-     * Extract fields from class body.
+     * Extract fields from class body using a deterministic line-based parser.
+     * 
+     * No regex. No backtracking. Never hangs.
+     * Tracks brace depth to skip local variables inside methods.
      */
     private List<FieldInfo> extractFields(String classBody) {
         log.info("  >> Entering extractFields (classBody length: {})", classBody.length());
         long extractFieldsStart = System.currentTimeMillis();
-        
-        List<FieldInfo> fields = new ArrayList<>();
-        
-        log.info("  >> extractFields: Compiling field pattern...");
-        long patternStart = System.currentTimeMillis();
-        // Pattern for field declarations
-        Pattern pattern = Pattern.compile(
-            "((?:public|private|protected)?\\s*(?:static)?\\s*(?:final)?\\s*(?:final\\s+)?" +
-            "[\\w<>\\[\\],\\s\\.]+)\\s+" +
-            "([\\w<>\\[\\],\\s\\.]+)" +
-            "(?:\\s*=\\s*([^;{\\n]+))?\\s*;",
-            Pattern.MULTILINE | Pattern.DOTALL
-        );
-        long patternDuration = System.currentTimeMillis() - patternStart;
-        log.info("  >> extractFields: Pattern compiled in {} ms", patternDuration);
-        if (patternDuration > SLOW_OP_THRESHOLD_MS) {
-            log.warn("WARNING: Slow operation: extractFields pattern compile");
-        }
 
-        log.info("  >> extractFields: Creating matcher...");
-        long matcherStart = System.currentTimeMillis();
-        Matcher matcher = pattern.matcher(classBody);
-        long matcherDuration = System.currentTimeMillis() - matcherStart;
-        log.info("  >> extractFields: Matcher created in {} ms", matcherDuration);
-        
-        int fieldCount = 0;
-        log.info("  >> extractFields: Entering while(matcher.find()) loop");
-        long loopStart = System.currentTimeMillis();
-        
-        while (matcher.find()) {
-            fieldCount++;
-            log.info("  >> extractFields: Processing field #{}", fieldCount);
-            long fieldStart = System.currentTimeMillis();
-            
-            // Skip if it looks like a method return type
-            String fullMatch = matcher.group(0);
-            if (fullMatch.trim().startsWith("return") || fullMatch.trim().startsWith("throw")) {
-                log.info("  >> extractFields: Skipping field #{} (looks like return/throw)", fieldCount);
-                continue;
+        List<FieldInfo> fields = new ArrayList<>();
+        String[] lines = classBody.split("\n");
+
+        // Track brace depth to distinguish class-level fields from local variables.
+        // When we first see an opening '{', depth goes to 1 (class body level).
+        // Inside methods, depth goes to 2+, so local vars are skipped at depth > 1.
+        // Start at 0: represents "inside class body" context (extractClassBody already stripped outer braces)
+        int braceDepth = 0;
+
+        for (String rawLine : lines) {
+            String line = rawLine.trim();
+
+            // Skip blank lines
+            if (line.isEmpty()) continue;
+
+            // Skip annotations
+            if (line.startsWith("@")) continue;
+
+            // Track brace depth FIRST, before any filtering.
+            // This ensures we know which scope a line belongs to even if we skip it.
+            for (char c : line.toCharArray()) {
+                if (c == '{') braceDepth++;
+                else if (c == '}') braceDepth--;
             }
 
+            // Only consider lines ending with ';' (field declarations or method bodies)
+            if (!line.endsWith(";")) continue;
+
+            // Skip lines that look like method declarations: an identifier immediately before '('.
+            // We can't use the naive "contains '(' check because field initializers
+            // may contain constructor calls like "new ArrayList<>>();" which also have ().
+            // Instead, check if there's a word character right before any '(' — that indicates
+            // a method name pattern. Pure initializer expressions like "new X()" are OK.
+            boolean looksLikeMethodDecl = false;
+            for (int i = 1; i < line.length(); i++) {
+                if (line.charAt(i) == '(' && Character.isJavaIdentifierStart(line.charAt(i - 1))) {
+                    looksLikeMethodDecl = true;
+                    break;
+                }
+            }
+            if (looksLikeMethodDecl) continue;
+
+            // Skip local variables and control flow inside methods/blocks.
+            // braceDepth starts at 0 (class body level). First '{' → depth 1.
+            // At depth ≥ 1 we're inside a method or nested block.
+            if (braceDepth >= 1) continue;
+
+            // Skip control flow / statements
+            String firstToken = firstWord(line);
+            if (CONTROL_FLOW_KEYWORDS.contains(firstToken.toLowerCase())) continue;
+
+            // Remove trailing semicolon
+            line = line.substring(0, line.length() - 1).trim();
+
+            // Remove initializer (everything after '=', but not inside generics)
+            // Only strip top-level '=' that is outside angle brackets
+            String defaultValue = null;
+            int bracketDepth = 0;
+            int eqIndex = -1;
+            for (int i = 0; i < line.length(); i++) {
+                char ch = line.charAt(i);
+                if (ch == '<') bracketDepth++;
+                else if (ch == '>') bracketDepth--;
+                else if (ch == '=' && bracketDepth == 0) {
+                    eqIndex = i;
+                    break;
+                }
+            }
+            if (eqIndex >= 0) {
+                defaultValue = line.substring(eqIndex + 1).trim();
+                line = line.substring(0, eqIndex).trim();
+            }
+
+            // Tokenize by whitespace
+            String[] tokens = line.split("\\s+");
+            if (tokens.length < 2) continue; // need at least type + name
+
+            // Consume leading modifiers
+            List<String> modifierList = new ArrayList<>();
+            int typeStartIndex = 0;
+            for (int i = 0; i < tokens.length; i++) {
+                if (FIELD_MODIFIERS.contains(tokens[i])) {
+                    modifierList.add(tokens[i]);
+                    typeStartIndex = i + 1;
+                } else {
+                    break;
+                }
+            }
+
+            // Need at least type + name after modifiers
+            int remainingTokens = tokens.length - typeStartIndex;
+            if (remainingTokens < 2) continue;
+
+            // Last token is the field name
+            String fieldName = tokens[tokens.length - 1];
+
+            // Skip if it looks like a method signature or control flow
+            if ("void".equalsIgnoreCase(fieldName)) continue;
+
+            // Everything between modifiers and field name is the type (join all tokens)
+            StringBuilder typeBuilder = new StringBuilder();
+            for (int i = typeStartIndex; i < tokens.length - 1; i++) {
+                if (i > typeStartIndex) typeBuilder.append(" ");
+                typeBuilder.append(tokens[i]);
+            }
+            String fieldType = typeBuilder.toString().trim();
+
+            // Skip void type (method signatures like "private void someMethod")
+            if ("void".equals(fieldType)) continue;
+
+            // Determine visibility
+            String visibility = "PACKAGE_PRIVATE";
+            for (String mod : modifierList) {
+                switch (mod) {
+                    case "public": visibility = "PUBLIC"; break;
+                    case "private": visibility = "PRIVATE"; break;
+                    case "protected": visibility = "PROTECTED"; break;
+                }
+            }
+
+            // Build FieldInfo
             FieldInfo field = new FieldInfo();
-            field.setName(matcher.group(2).trim());
-            field.setType(matcher.group(1).trim());
-            
-            String modifiers = fullMatch.toLowerCase();
-            if (modifiers.contains("public")) field.setVisibility("PUBLIC");
-            else if (modifiers.contains("protected")) field.setVisibility("PROTECTED");
-            else if (modifiers.contains("private")) field.setVisibility("PRIVATE");
-            else field.setVisibility("PACKAGE_PRIVATE");
-            
-            field.setStatic(modifiers.contains("static"));
-            field.setFinal(modifiers.contains("final"));
-            
-            if (matcher.group(3) != null) {
-                field.setDefaultValue(matcher.group(3).trim());
+            field.setFieldName(fieldName);
+            field.setType(fieldType);
+            field.setVisibility(visibility);
+            field.setStatic(modifierList.contains("static"));
+            field.setFinal(modifierList.contains("final"));
+            if (defaultValue != null) {
+                field.setDefaultValue(defaultValue);
             }
 
             fields.add(field);
-            long fieldDuration = System.currentTimeMillis() - fieldStart;
-            log.info("  >> extractFields: Field #{}: name={}, type={}, duration={} ms", fieldCount, field.getFieldName(), field.getFieldType(), fieldDuration);
+            log.info("  >> extractFields: Parsed field #{}: name={}, type={}, visibility={}, static={}, final={}",
+                fields.size(), fieldName, fieldType, visibility, field.isStatic(), field.isFinal());
         }
-        
-        long loopDuration = System.currentTimeMillis() - loopStart;
-        log.info("  >> extractFields: Left while(matcher.find()) loop. Total fields: {} in {} ms", fieldCount, loopDuration);
-        
+
         long totalDuration = System.currentTimeMillis() - extractFieldsStart;
-        log.info("  >> extractFields: Returning {} fields, total duration: {} ms", fields.size(), totalDuration);
+        log.info("  >> extractFields: Returning {} fields in {} ms", fields.size(), totalDuration);
         log.info("  >> Leaving extractFields");
-        
         return fields;
+    }
+
+    /** Returns the first whitespace-delimited word in the string, or empty string. */
+    private static String firstWord(String s) {
+        int i = 0;
+        while (i < s.length() && s.charAt(i) == ' ') i++;
+        int start = i;
+        while (i < s.length() && s.charAt(i) != ' ') i++;
+        return s.substring(start, i);
     }
 
     /**
