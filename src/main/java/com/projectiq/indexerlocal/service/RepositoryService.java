@@ -8,9 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Service for managing repository lifecycle.
@@ -63,6 +69,11 @@ public class RepositoryService {
 
         // Create workspace directory for this repository
         Path workspacePath = workspaceService.createRepositoryWorkspace(repositoryId, repositoryName);
+        logger.info("Workspace created for repository: id={}, name={}, workspacePath={}", repositoryId, repositoryName, workspacePath);
+
+        // Copy original repository contents into workspace
+        Path sourcePath = Paths.get(path).toAbsolutePath().normalize();
+        copyToWorkspace(sourcePath, workspacePath);
 
         // Create repository entity
         com.projectiq.indexerlocal.model.Repository repository = new com.projectiq.indexerlocal.model.Repository();
@@ -82,6 +93,65 @@ public class RepositoryService {
         logger.info("Repository registered: id={}, name={}, path={}", repositoryId, repositoryName, path);
 
         return repository;
+    }
+
+    /**
+     * Copy all files from the source path to the workspace directory recursively.
+     */
+    private void copyToWorkspace(Path sourcePath, Path workspacePath) {
+        if (!Files.exists(sourcePath)) {
+            throw new IllegalArgumentException("Source directory does not exist: " + sourcePath);
+        }
+
+        if (!Files.isDirectory(sourcePath)) {
+            throw new IllegalArgumentException("Source path is not a directory: " + sourcePath);
+        }
+
+        long startTime = System.currentTimeMillis();
+        AtomicInteger fileCount = new AtomicInteger(0);
+
+        logger.info("Starting copy from source={} to workspace={}", sourcePath, workspacePath);
+
+        try {
+            Files.walkFileTree(sourcePath, new SimpleFileVisitor<Path>() {
+                @Override
+                public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                    Path targetDir = workspacePath.resolve(sourcePath.relativize(dir));
+                    try {
+                        Files.createDirectories(targetDir);
+                    } catch (IOException e) {
+                        logger.error("Failed to create directory: {}", targetDir, e);
+                        throw e;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                    Path targetFile = workspacePath.resolve(sourcePath.relativize(file));
+                    try {
+                        Files.copy(file, targetFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
+                        fileCount.incrementAndGet();
+                    } catch (IOException e) {
+                        logger.error("Failed to copy file: {} to {}", file, targetFile, e);
+                        throw e;
+                    }
+                    return FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException exc) throws IOException {
+                    logger.error("Failed to access file during copy: {}", file, exc);
+                    throw exc;
+                }
+            });
+        } catch (IOException e) {
+            logger.error("Failed to copy repository contents from {} to {}", sourcePath, workspacePath, e);
+            throw new RuntimeException("Failed to copy repository contents from " + sourcePath + " to " + workspacePath, e);
+        }
+
+        long duration = System.currentTimeMillis() - startTime;
+        logger.info("Copy completed: {} files copied from {} to {} in {} ms", fileCount.get(), sourcePath, workspacePath, duration);
     }
 
     /**

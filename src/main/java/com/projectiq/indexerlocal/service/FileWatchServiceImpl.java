@@ -7,7 +7,7 @@ import com.projectiq.indexerlocal.model.event.WatchEvent;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -28,7 +28,6 @@ import java.util.stream.Collectors;
  * to monitor indexed repositories for file system changes.
  */
 @Service
-@EnableConfigurationProperties(WatchServiceProperties.class)
 public class FileWatchServiceImpl implements FileWatchService {
 
     private static final Logger logger = LoggerFactory.getLogger(FileWatchServiceImpl.class);
@@ -60,7 +59,7 @@ public class FileWatchServiceImpl implements FileWatchService {
     // Scheduled executor for watcher threads
     private ScheduledExecutorService scheduler;
 
-    public FileWatchServiceImpl(WatchServiceProperties properties) throws IOException {
+    public FileWatchServiceImpl(@Qualifier("watchServiceProperties") WatchServiceProperties properties) throws IOException {
         this.watchService = FileSystems.getDefault().newWatchService();
         this.properties = properties;
         this.fileWatchProperties = new FileWatchProperties(

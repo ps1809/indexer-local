@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProjectIQ - Repository Registration & Indexing Guide</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --border: #e2e8f0;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --success: #16a34a;
+            --warning: #d97706;
+            --danger: #dc2626;
+            --code-bg: #1e293b;
+            --code-text: #e2e8f0;
+            --step-bg: #eff6ff;
+            --step-number: #2563eb;
+            --response-bg: #f0fdf4;
+            --request-bg: #fefce8;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: white;
+            padding: 3rem 2rem;
+            text-align: center;
+        }
+        .header h1 { font-size: 2.2rem; margin-bottom: 0.5rem; }
+        .header p { font-size: 1.1rem; opacity: 0.85; max-width: 700px; margin: 0 auto; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+        .overview-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .overview-card h2 { color: var(--primary); margin-bottom: 1rem; }
+        .overview-card ul { padding-left: 1.5rem; }
+        .overview-card li { margin-bottom: 0.5rem; }
+        .status-flow {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            padding: 1rem 0;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .status-registered { background: #e2e8f0; color: #475569; }
+        .status-ready { background: #dbeafe; color: #1d4ed8; }
+        .status-indexing { background: #fef3c7; color: #92400e; }
+        .status-indexed { background: #d1fae5; color: #065f46; }
+        .status-failed { background: #fce4ec; color: #c62828; }
+        .status-refreshing { background: #e0f2fe; color: #0369a1; }
+        .arrow { color: var(--text-muted); font-size: 1.2rem; }
+        .step-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+        .step-header {
+            background: var(--step-bg);
+            padding: 1.2rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .step-number {
+            background: var(--step-number);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        .step-title { font-size: 1.2rem; font-weight: 600; }
+        .step-body { padding: 1.5rem; }
+        .step-body p { margin-bottom: 1rem; }
+        .endpoint {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 1rem 1.2rem;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            overflow-x: auto;
+        }
+        .endpoint .method {
+            font-weight: 700;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-right: 0.5rem;
+        }
+        .method-post { background: #16a34a; color: white; }
+        .method-get { background: #2563eb; color: white; }
+        .method-put { background: #d97706; color: white; }
+        .method-delete { background: #dc2626; color: white; }
+        .code-block {
+            background: var(--code-bg);
+            color: var(--code-text);
+            padding: 1rem 1.2rem;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            margin-bottom: 1rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .response-block {
+            background: var(--response-bg);
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 1rem 1.2rem;
+            margin-bottom: 1rem;
+        }
+        .response-block h4 { color: var(--success); margin-bottom: 0.5rem; }
+        .request-block {
+            background: var(--request-bg);
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 1rem 1.2rem;
+            margin-bottom: 1rem;
+        }
+        .request-block h4 { color: var(--warning); margin-bottom: 0.5rem; }
+        .note {
+            background: #f0f9ff;
+            border-left: 4px solid var(--primary);
+            padding: 1rem 1.2rem;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+        .note strong { color: var(--primary); }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1rem;
+        }
+        th, td {
+            border: 1px solid var(--border);
+            padding: 0.75rem;
+            text-align: left;
+        }
+        th { background: #f1f5f9; font-weight: 600; }
+        td { font-size: 0.9rem; }
+        tr:hover { background: #f8fafc; }
+        .param-table { font-size: 0.85rem; }
+        .param-table td:first-child { font-family: 'SF Mono', monospace; font-weight: 600; }
+        .footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+        .toc {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .toc h2 { margin-bottom: 1rem; color: var(--text); }
+        .toc ol { padding-left: 1.5rem; }
+        .toc li { margin-bottom: 0.4rem; }
+        .toc a { color: var(--primary); text-decoration: none; }
+        .toc a:hover { text-decoration: underline; }
+        .curl-command {
+            display: block;
+            background: #0f172a;
+            color: #a5f3fc;
+            padding: 0.8rem 1rem;
+            border-radius: 6px;
+            font-family: 'SF Mono', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            margin-bottom: 0.8rem;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .curl-command::before {
+            content: '$ ';
+            color: #4ade80;
+        }
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .header { padding: 2rem 1rem; }
+            .header h1 { font-size: 1.6rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>ProjectIQ — Register & Index a Repository</h1>
+    <p>Complete end-to-end guide with step-by-step API calls, example requests, and expected responses.</p>
+</div>
+
+<div class="container">
+
+    <!-- Table of Contents -->
+    <div class="toc">
+        <h2>📋 Table of Contents</h2>
+        <ol>
+            <li><a href="#step1">Register a Repository</a></li>
+            <li><a href="#step2">Verify Repository Registration</a></li>
+            <li><a href="#step3">Analyze Build System & Technology Stack</a></li>
+            <li><a href="#step4">Analyze Dependencies</a></li>
+            <li><a href="#step5">Analyze Configuration Files</a></li>
+            <li><a href="#step6">Build Java Source Index (Full Index)</a></li>
+            <li><a href="#step7">Retrieve Indexing Summary & Statistics</a></li>
+            <li><a href="#step8">Incremental Re-Index</a></li>
+            <li><a href="#step9">View Repository Status & History</a></li>
+            <li><a href="#step10">Refresh Repository Metadata</a></li>
+            <li><a href="#step11">Delete Repository (Cleanup)</a></li>
+            <li><a href="#appendix">Appendix: Repository Lifecycle Status Flow</a></li>
+        </ol>
+    </div>
+
+    <!-- Overview -->
+    <div class="overview-card">
+        <h2>📌 Overview</h2>
+        <p>This guide walks you through the complete lifecycle of registering a code repository and indexing it using the ProjectIQ API. The typical flow is:</p>
+        <div class="status-flow">
+            <span class="status-badge status-registered">REGISTERED</span>
+            <span class="arrow">→</span>
+            <span class="status-badge status-ready">READY</span>
+            <span class="arrow">→</span>
+            <span class="status-badge status-indexing">INDEXING</span>
+            <span class="arrow">→</span>
+            <span class="status-badge status-indexed">INDEXED</span>
+        </div>
+        <p style="margin-top: 0.5rem;">All APIs are prefixed with <code>http://<host>:<port>/api/v1</code>. The examples in this guide assume the service is running at <code>http://localhost:8080</code>.</p>
+    </div>
+
+    <!-- ========== STEP 1 ========== -->
+    <div class="step-section" id="step1">
+        <div class="step-header">
+            <span class="step-number">1</span>
+            <span class="step-title">Register a Repository</span>
+        </div>
+        <div class="step-body">
+            <p>Submit the filesystem path of the repository you want to index. The system will copy the repository into its managed workspace and generate a unique <strong>repositoryId</strong> (UUID).</p>
+
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/repositories
+            </div>
+
+            <h4>Request Body</h4>
+            <table class="param-table">
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+                <tr><td>path</td><td>string</td><td>Yes</td><td>Absolute filesystem path to the repository directory</td></tr>
+            </table>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/repositories \
+    -H "Content-Type: application/json" \
+    -d '{"path":"C:\\Users\\parde\\Projects\\my-app"}'</div>
+                <p><em>For Unix-style paths:</em></p>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/repositories \
+    -H "Content-Type: application/json" \
+    -d '{"path":"/home/user/projects/my-app"}'</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 201 Created)</h4>
+                <div class="code-block">{
+  "id": 1,
+  "repositoryId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "repositoryName": "my-app",
+  "originalPath": "/home/user/projects/my-app",
+  "workspacePath": "/workspace/repo_a1b2c3d4",
+  "registrationTimestamp": "2026-07-28T15:00:00",
+  "lastUpdatedTimestamp": "2026-07-28T15:00:00",
+  "lastRefreshTimestamp": null,
+  "lastIndexingTimestamp": null,
+  "status": "REGISTERED",
+  "buildSystem": "Unknown",
+  "technologyStack": "Unknown"
+}</div>
+            </div>
+
+            <div class="note">
+                <strong>💡 Note:</strong> The <code>repositoryId</code> (UUID) uniquely identifies the repository throughout its lifecycle. Save this value — you will need it for all subsequent operations.
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 2 ========== -->
+    <div class="step-section" id="step2">
+        <div class="step-header">
+            <span class="step-number">2</span>
+            <span class="step-title">Verify Repository Registration</span>
+        </div>
+        <div class="step-body">
+            <p>List all registered repositories and confirm your repository was created successfully.</p>
+
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories
+            </div>
+
+            <h4>Query Parameters (optional)</h4>
+            <table class="param-table">
+                <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+                <tr><td>status</td><td>string</td><td>—</td><td>Filter by repository status (REGISTERED, READY, INDEXING, INDEXED, FAILED, REFRESHING)</td></tr>
+                <tr><td>page</td><td>int</td><td>0</td><td>Zero-based page number</td></tr>
+                <tr><td>size</td><td>int</td><td>20</td><td>Page size (max 100)</td></tr>
+                <tr><td>sortBy</td><td>string</td><td>id</td><td>Sort field</td></tr>
+                <tr><td>sortOrder</td><td>string</td><td>asc</td><td>Sort direction (asc / desc)</td></tr>
+            </table>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl "http://localhost:8080/api/v1/repositories?page=0&size=20&sortBy=id&sortOrder=desc"</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "repositories": [
+    {
+      "id": 1,
+      "repositoryId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "repositoryName": "my-app",
+      "originalPath": "/home/user/projects/my-app",
+      "workspacePath": "/workspace/repo_a1b2c3d4",
+      "status": "REGISTERED",
+      ...
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 1,
+  "totalPages": 1
+}</div>
+            </div>
+
+            <p>Alternatively, retrieve a single repository by its internal ID or repositoryId:</p>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories/{id}
+            </div>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories/by-id/{repositoryId}
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Requests</h4>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repositories/1</div>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repositories/by-id/a1b2c3d4-e5f6-7890-abcd-ef1234567890</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 3 ========== -->
+    <div class="step-section" id="step3">
+        <div class="step-header">
+            <span class="step-number">3</span>
+            <span class="step-title">Analyze Build System & Technology Stack</span>
+        </div>
+        <div class="step-body">
+            <p>Detect the build system (Maven, Gradle, etc.) and technology stack of the repository. This is optional but recommended for richer metadata.</p>
+
+            <h3>Build System Analysis</h3>
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/build-systems/{repositoryId}/analyze
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/build-systems/a1b2c3d4-e5f6-7890-abcd-ef1234567890/analyze</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "buildSystemType": "MAVEN",
+  "buildFilePath": "pom.xml",
+  "version": "3.9.0",
+  "plugins": ["maven-compiler-plugin", "spring-boot-maven-plugin"],
+  ...
+}</div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">Technology Stack Analysis</h3>
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/technology-stacks/{repositoryId}/analyze
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/technology-stacks/a1b2c3d4-e5f6-7890-abcd-ef1234567890/analyze</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "languages": ["Java", "JavaScript"],
+  "frameworks": ["Spring Boot", "React"],
+  "javaVersion": "17",
+  ...
+}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 4 ========== -->
+    <div class="step-section" id="step4">
+        <div class="step-header">
+            <span class="step-number">4</span>
+            <span class="step-title">Analyze Dependencies</span>
+        </div>
+        <div class="step-body">
+            <p>Extract and analyze project dependencies from build files (pom.xml, build.gradle, etc.).</p>
+
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/dependencies/{repositoryId}/analyze
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/dependencies/a1b2c3d4-e5f6-7890-abcd-ef1234567890/analyze</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "dependencies": [
+    {"groupId": "org.springframework.boot", "artifactId": "spring-boot-starter-web", "version": "3.2.0", "type": "MAVEN"},
+    {"groupId": "org.projectlombok", "artifactId": "lombok", "version": "1.18.30", "type": "MAVEN"}
+  ],
+  "totalDependencies": 15,
+  ...
+}</div>
+            </div>
+
+            <p>You can also retrieve analyzed dependencies:</p>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/dependencies/{repositoryId}
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 5 ========== -->
+    <div class="step-section" id="step5">
+        <div class="step-header">
+            <span class="step-number">5</span>
+            <span class="step-title">Analyze Configuration Files</span>
+        </div>
+        <div class="step-body">
+            <p>Identify and classify configuration files (application.properties, YAML, XML, etc.).</p>
+
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/configurations/{repositoryId}/analyze
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/configurations/a1b2c3d4-e5f6-7890-abcd-ef1234567890/analyze</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "configurationFiles": [
+    {"path": "src/main/resources/application.properties", "type": "SPRING_PROPERTIES"},
+    {"path": "src/main/resources/application-dev.yml", "type": "YAML"}
+  ],
+  "totalFiles": 5,
+  ...
+}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 6 ========== -->
+    <div class="step-section" id="step6">
+        <div class="step-header">
+            <span class="step-number">6</span>
+            <span class="step-title">Build Java Source Index (Full Index)</span>
+        </div>
+        <div class="step-body">
+            <p>This is the <strong>core indexing step</strong>. It scans all Java source files in the repository and extracts structural metadata including packages, imports, classes, interfaces, enums, records, methods, constructors, fields, and annotations.</p>
+
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/repositories/{repositoryId}/index
+            </div>
+
+            <div class="note">
+                <strong>⚠️ Important:</strong> This operation can take time depending on the repository size. The repository must have been registered first (Step 1) and must have a valid workspace path.
+            </div>
+
+            <table class="param-table">
+                <tr><th>Parameter</th><th>Type</th><th>Location</th><th>Description</th></tr>
+                <tr><td>repositoryId</td><td>string</td><td>Path</td><td>The UUID repository ID returned from registration</td></tr>
+            </table>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/repositories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/index</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "status": "success",
+  "message": "Java source index built successfully",
+  "data": {
+    "repositoryId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "indexedAt": "2026-07-28T15:05:00",
+    "indexedFiles": [...],
+    "statistics": {
+      "totalJavaFiles": 42,
+      "totalPackages": 8,
+      "totalClasses": 15,
+      "totalInterfaces": 3,
+      "totalEnums": 2,
+      "totalRecords": 1,
+      "totalMethods": 120,
+      "totalFields": 85,
+      "totalAnnotations": 200
+    }
+  }
+}</div>
+            </div>
+
+            <div class="note" style="border-left-color: #d97706; background: #fffbeb;">
+                <strong>⚠️ Known Limitation:</strong> The <code>POST /api/v1/repositories/{repositoryId}/index</code> endpoint scans files and returns live counts in the response body, but the indexed data is <strong>not persisted to the database</strong>. Subsequent <code>GET</code> calls to retrieve indexing summary/statistics will return zero counts. To persist indexed data to the database, use the <code>POST /api/v1/index/directory</code> or <code>POST /api/v1/index/files</code> endpoints (shown below) which save results via <code>indexRepository.saveIndexResult()</code>.
+            </div>
+
+            <p>Use these alternative endpoints to persist indexed data to the database:</p>
+
+            <h4>Index a Directory (Persists to DB)</h4>
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/index/directory?directory=/path/to/dir
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example: Index a directory</h4>
+                <div class="curl-command">curl -X POST "http://localhost:8080/api/v1/index/directory?directory=/home/user/projects/my-app/src"</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Response (HTTP 201 Created)</h4>
+                <div class="code-block">{
+  "status": "success",
+  "message": "Directory indexed successfully: /home/user/projects/my-app/src"
+}</div>
+            </div>
+
+            <h4 style="margin-top: 1.5rem;">Index a Single File (Upload) — Persists to DB</h4>
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/index/files
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example: Upload a Java file</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/index/files \
+    -F "file=@/path/to/MyClass.java" \
+    -F "filePath=com/example/MyClass.java"</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Response (HTTP 201 Created)</h4>
+                <div class="code-block">{
+  "status": "success",
+  "message": "File indexed successfully"
+}</div>
+            </div>
+
+            <h4 style="margin-top: 1.5rem;">Index Multiple Files (Batch Upload) — Persists to DB</h4>
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/index/files/batch
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example: Upload multiple Java files</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/index/files/batch \
+    -F "files=@/path/to/File1.java" \
+    -F "files=@/path/to/File2.java"</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 7 ========== -->
+    <div class="step-section" id="step7">
+        <div class="step-header">
+            <span class="step-number">7</span>
+            <span class="step-title">Retrieve Indexing Summary & Statistics</span>
+        </div>
+        <div class="step-body">
+            <p>After indexing, you can query the results to verify what was indexed and get detailed statistics.</p>
+
+            <h3>Indexing Summary</h3>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories/{repositoryId}/index
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repositories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/index</div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">Detailed Indexing Statistics</h3>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories/{repositoryId}/index/statistics
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repositories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/index/statistics</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "status": "success",
+  "data": {
+    "totalJavaFiles": 42,
+    "totalPackages": 8,
+    "totalClasses": 15,
+    "totalInterfaces": 3,
+    "totalEnums": 2,
+    "totalRecords": 1,
+    "totalMethods": 120,
+    "totalConstructors": 15,
+    "totalFields": 85,
+    "totalAnnotations": 200
+  }
+}</div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">List All Indexed Files</h3>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/files?page=0&size=20
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl "http://localhost:8080/api/v1/files?page=0&size=10"</div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">Repository Summary</h3>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repository-summary
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repository-summary</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 8 ========== -->
+    <div class="step-section" id="step8">
+        <div class="step-header">
+            <span class="step-number">8</span>
+            <span class="step-title">Incremental Re-Index</span>
+        </div>
+        <div class="step-body">
+            <p>When files change, use incremental indexing to update only the modified files instead of re-indexing everything. This is significantly faster than a full re-index.</p>
+
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/repositories/{repositoryId}/reindex/incremental
+            </div>
+
+            <div class="note">
+                <strong>💡 Note:</strong> The controller maps <code>{repositoryId}</code> as a <strong>Long (internal ID)</strong>. The service internally resolves it to the UUID repositoryId.
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/repositories/1/reindex/incremental</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "status": "success",
+  "message": "Incremental indexing completed successfully",
+  "data": {
+    "repositoryId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "filesAdded": 2,
+    "filesModified": 5,
+    "filesDeleted": 0,
+    "filesRenamed": 1,
+    "filesUnchanged": 34,
+    "status": "COMPLETED",
+    "startedAt": "2026-07-28T16:00:00",
+    "completedAt": "2026-07-28T16:00:03"
+  }
+}</div>
+            </div>
+
+            <p>You can also trigger incremental indexing directly via the Index API (uses UUID repositoryId):</p>
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/repositories/{repositoryId}/incremental-index
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/repositories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/incremental-index</div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">Check Incremental Indexing Status</h3>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories/{repositoryId}/incremental-index/status
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repositories/a1b2c3d4-e5f6-7890-abcd-ef1234567890/incremental-index/status</div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">Full Re-Index</h3>
+            <p>If you need to rebuild everything from scratch:</p>
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/repositories/{repositoryId}/reindex
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/repositories/1/reindex</div>
+            </div>
+
+            <div class="note">
+                <strong>⚠️ Caution:</strong> Full re-index deletes all existing indexed data and rebuilds from scratch. Use incremental indexing when possible for efficiency.
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 9 ========== -->
+    <div class="step-section" id="step9">
+        <div class="step-header">
+            <span class="step-number">9</span>
+            <span class="step-title">View Repository Status & History</span>
+        </div>
+        <div class="step-body">
+            <p>Monitor the current status of your repository and view its refresh/indexing history.</p>
+
+            <h3>Get Current Status</h3>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories/{repositoryId}/status
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repositories/1/status</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Example Response (HTTP 200)</h4>
+                <div class="code-block">{
+  "repositoryId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "INDEXED",
+  "lastRefreshTimestamp": "2026-07-28T15:10:00",
+  "lastIndexingTimestamp": "2026-07-28T15:05:00",
+  "indexedFilesCount": 42,
+  ...
+}</div>
+            </div>
+
+            <h3 style="margin-top: 1.5rem;">Repository Statistics (Counts by Status)</h3>
+            <div class="endpoint">
+                <span class="method method-get">GET</span> /api/v1/repositories/statistics
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl http://localhost:8080/api/v1/repositories/statistics</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 10 ========== -->
+    <div class="step-section" id="step10">
+        <div class="step-header">
+            <span class="step-number">10</span>
+            <span class="step-title">Refresh Repository Metadata</span>
+        </div>
+        <div class="step-body">
+            <p>Refresh the repository metadata to verify the workspace and update timestamps without re-indexing.</p>
+
+            <div class="endpoint">
+                <span class="method method-post">POST</span> /api/v1/repositories/{repositoryId}/refresh
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X POST http://localhost:8080/api/v1/repositories/1/refresh</div>
+            </div>
+
+            <p>To update repository metadata (name, description, workspace path):</p>
+            <div class="endpoint">
+                <span class="method method-put">PUT</span> /api/v1/repositories/{id}
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X PUT http://localhost:8080/api/v1/repositories/1 \
+    -H "Content-Type: application/json" \
+    -d '{"name":"My App v2","description":"Updated project repository","workspacePath":"/new/workspace/path"}'</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== STEP 11 ========== -->
+    <div class="step-section" id="step11">
+        <div class="step-header">
+            <span class="step-number">11</span>
+            <span class="step-title">Delete Repository (Cleanup)</span>
+        </div>
+        <div class="step-body">
+            <p>When you no longer need a repository, delete it along with all its indexed data and workspace.</p>
+
+            <div class="endpoint">
+                <span class="method method-delete">DELETE</span> /api/v1/repositories/by-id/{repositoryId}
+            </div>
+
+            <div class="note">
+                <strong>⚠️ Irreversible:</strong> This removes the repository registration, its workspace directory, and all indexed data. This action cannot be undone.
+            </div>
+
+            <div class="request-block">
+                <h4>📤 Example Request</h4>
+                <div class="curl-command">curl -X DELETE http://localhost:8080/api/v1/repositories/by-id/a1b2c3d4-e5f6-7890-abcd-ef1234567890</div>
+            </div>
+
+            <div class="response-block">
+                <h4>✅ Response (HTTP 204 No Content)</h4>
+                <p>No body is returned on successful deletion.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== APPENDIX ========== -->
+    <div class="step-section" id="appendix">
+        <div class="step-header">
+            <span class="step-number">📘</span>
+            <span class="step-title">Appendix: Repository Lifecycle Status Flow</span>
+        </div>
+        <div class="step-body">
+            <p>Repositories follow this lifecycle through their status values:</p>
+
+            <div class="status-flow">
+                <span class="status-badge status-registered">REGISTERED</span>
+                <span class="arrow">→</span>
+                <span class="status-badge status-ready">READY</span>
+                <span class="arrow">→</span>
+                <span class="status-badge status-indexing">INDEXING</span>
+                <span class="arrow">→</span>
+                <span class="status-badge status-indexed">INDEXED</span>
+            </div>
+            <div class="status-flow" style="margin-top: 0.5rem;">
+                <span class="status-badge status-indexed">INDEXED</span>
+                <span class="arrow">→</span>
+                <span class="status-badge status-refreshing">REFRESHING</span>
+                <span class="arrow">→</span>
+                <span class="status-badge status-indexed">INDEXED</span>
+            </div>
+            <div class="status-flow" style="margin-top: 0.5rem;">
+                Any status <span class="arrow">→</span>
+                <span class="status-badge status-failed">FAILED</span>
+            </div>
+
+            <table style="margin-top: 1rem;">
+                <tr><th>Status</th><th>Description</th></tr>
+                <tr><td><span class="status-badge status-registered">REGISTERED</span></td><td>Repository has been registered but not yet processed or verified.</td></tr>
+                <tr><td><span class="status-badge status-ready">READY</span></td><td>Repository workspace is verified and ready for indexing.</td></tr>
+                <tr><td><span class="status-badge status-indexing">INDEXING</span></td><td>Repository is currently being indexed.</td></tr>
+                <tr><td><span class="status-badge status-indexed">INDEXED</span></td><td>Repository has been successfully indexed.</td></tr>
+                <tr><td><span class="status-badge status-failed">FAILED</span></td><td>An error occurred during registration, refresh, or indexing.</td></tr>
+                <tr><td><span class="status-badge status-refreshing">REFRESHING</span></td><td>Repository metadata or index is being refreshed.</td></tr>
+            </table>
+
+            <h3 style="margin-top: 1.5rem;">Quick Reference: All Endpoints</h3>
+            <table>
+                <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/repositories</td><td>Register a new repository</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories</td><td>List all repositories</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories/{id}</td><td>Get repository by internal ID</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories/by-id/{repositoryId}</td><td>Get repository by UUID</td></tr>
+                <tr><td><span class="method method-put">PUT</span></td><td>/api/v1/repositories/{id}</td><td>Update repository metadata</td></tr>
+                <tr><td><span class="method method-delete">DELETE</span></td><td>/api/v1/repositories/by-id/{repositoryId}</td><td>Delete repository and all data</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories/statistics</td><td>Get repository statistics</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/repositories/{id}/refresh</td><td>Refresh repository metadata</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/repositories/{id}/reindex</td><td>Full re-index</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/repositories/{id}/reindex/incremental</td><td>Incremental re-index</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories/{id}/status</td><td>Get repository status</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/repositories/{repositoryId}/index</td><td>Build Java source index</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories/{repositoryId}/index</td><td>Get indexing summary</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories/{repositoryId}/index/statistics</td><td>Get indexing statistics</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/repositories/{repositoryId}/incremental-index</td><td>Incremental indexing (by UUID)</td></tr>
+                <tr><td><span class="method method-get">GET</span></td><td>/api/v1/repositories/{repositoryId}/incremental-index/status</td><td>Get incremental index status</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/index/files</td><td>Index a single file (upload)</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/index/files/batch</td><td>Index multiple files (upload)</td></tr>
+                <tr><td><span class="method method-post">POST</span></td><td>/api/v1/index/directory</td><td>Index a directory by path</td></tr>
+            </table>
+
+            <div class="note" style="margin-top: 1rem;">
+                <strong>💡 Tip:</strong> For the fastest path from registration to a fully indexed repository, follow steps <strong>1 → 6 → 8</strong> (Register → Build Java Index → Incremental updates). Steps 3–5 are optional analyses that enrich metadata but are not required for core indexing functionality.
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        ProjectIQ Indexer — API Documentation &middot; Generated from source code v1 controllers
+    </div>
+
+</div>
+</body>
+</html>
